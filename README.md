@@ -1,71 +1,118 @@
-# thufir README
+# Thufir Extension for Visual Studio Code
 
-This is the README for your extension "thufir". After writing up a brief description, we recommend including the following sections.
-
-## Features
-
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
-
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+Thufir is a Visual Studio Code extension designed to help with server monitoring and management for developers. 
+It aims to combine real-time server metrics visualization, integration with Prometheus, and AI-powered root cause analysis 
+to provide actionable insights and efficient server management.
 
 ---
 
-## Following extension guidelines
+## Features
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+### 1. **Server Management**
+- Add, remove, connect to, and disconnect from remote servers.
+- Secure SSH-based connections.
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+### 2. **Metrics Collection**
+- Gather key server metrics such as:
+  - CPU usage
+  - Memory usage
+  - Disk usage
+  - System uptime
+  - Load averages
+- Metrics are collected via shell commands executed on the server.
 
-## Working with Markdown
+### 3. **Real-time Monitoring**
+- View metrics updated at a configurable interval (default: 5000 milliseconds).
+- Live updates every second in a user-friendly webview panel within VS Code.
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+### 4. **Integration with Prometheus** (this will be a future feature)
+- Fetch and display metrics from Prometheus endpoints.
+- Visualize long-term trends and metrics alongside real-time data.
+- Simplify server performance monitoring with Prometheus’s robust querying capabilities.
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+### 5. **AI-Powered Root Cause Analysis** (this will be a future feature)
+- Leverage LLMs to analyze server metrics.
+- Automatically detect anomalies and identify potential root causes.
+- Suggest remediation steps to resolve issues.
 
-## For more information
+### 6. **Integration with VS Code**
+- Tree view for server exploration.
+- Dedicated panel for detailed metrics visualization.
+- Commands accessible via the command palette.
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+### 7. **Configuration** (this will be a future feature)
+- Customizable refresh interval for server metrics.
+- User-defined Prometheus configurations.
 
-**Enjoy!**
+---
+
+## Installation
+
+1. Open the Extensions view in Visual Studio Code (`Ctrl+Shift+X` or `Cmd+Shift+X` on macOS).
+2. Search for `Thufir` and click **Install**.
+3. Reload VS Code to activate the extension.
+
+---
+
+## Usage
+
+### Add a Server
+1. Open the command palette (`Ctrl+Shift+P` or `Cmd+Shift+P` on macOS).
+2. Select `Thufir: Add Server`.
+3. Enter the server details (hostname, username, SSH key).
+
+### View Metrics
+1. Expand the server tree view in the Explorer pane.
+2. Click on a connected server to open the metrics dashboard.
+3. Monitor metrics in real-time in the webview panel.
+
+---
+
+## Development
+
+### Prerequisites
+- Node.js
+- VS Code Extension Development tools
+
+### Setup
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-repo/thufir.git
+   ```
+2. Install dependencies:
+   ```bash
+   cd thufir
+   npm install
+   ```
+3. Launch the extension in a development host:
+   ```bash
+   code .
+   ```
+   Press `F5` to start debugging.
+
+---
+
+## Contributing
+
+We welcome contributions! Please follow these steps:
+1. Fork the repository.
+2. Create a new branch for your feature or bugfix.
+3. Submit a pull request with a detailed description.
+
+---
+
+## License
+
+Thufir is licensed under the [GPLv3.0](LICENSE).
+
+---
+
+## Acknowledgments
+
+Special thanks to the open-source community and the developers behind Prometheus and LLM frameworks.
+
+---
+
+## Contact
+
+For questions, issues, or suggestions, please open an issue on [GitHub](https://github.com/evangelosmeklis/thufir).
