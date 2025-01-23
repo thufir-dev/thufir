@@ -1,0 +1,7 @@
+# Enforce LF for all text files
+* text=auto
+
+# Handle binary files
+*.png binary
+*.jpg binary
+*.gif binary
