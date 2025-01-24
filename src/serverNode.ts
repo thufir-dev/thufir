@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { PrometheusConfig } from './prometheusClient';
+import { PrometheusConfig } from './types';
 
 export class ServerNode extends vscode.TreeItem {
     private _isConnected: boolean = false;

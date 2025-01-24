@@ -8,6 +8,8 @@ import { ServerNode } from './serverNode';
 import { LLMService } from './llmService';
 import { SREAgentView } from './sreAgentView';
 import { ChatView } from './chatView';
+import { PrometheusClient } from './prometheusClient';
+import { Alert, MetricValue } from './types';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -62,6 +64,48 @@ export function activate(context: vscode.ExtensionContext) {
 				if (error instanceof Error) {
 					vscode.window.showErrorMessage(`Failed to configure AI provider: ${error.message}`);
 				}
+			}
+		}),
+
+		vscode.commands.registerCommand('thufir.analyzeAlert', async (data: { 
+			serverNode: ServerNode, 
+			alert: Alert, 
+			contextMetrics: string[],
+			relatedMetrics: Record<string, any>
+		}) => {
+			try {
+				const llmService = await LLMService.getInstance();
+				
+				if (!data.serverNode.prometheusConfig) {
+					vscode.window.showErrorMessage('Prometheus is not configured for this server');
+					return;
+				}
+
+				// Send to chat for analysis
+				vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
+				chatProvider.analyzeAlert(
+					data.serverNode, 
+					[data.alert], 
+					data.contextMetrics,
+					data.relatedMetrics
+				);
+			} catch (error) {
+				if (error instanceof Error) {
+					vscode.window.showErrorMessage(`Failed to analyze alert: ${error.message}`);
+				}
+			}
+		}),
+
+		vscode.commands.registerCommand('chat.focus', () => {
+			// Focus on the chat view
+			vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
+			const chatViewId = 'chat';
+			const views = vscode.window.visibleTextEditors.filter(
+				editor => editor.document.uri.scheme === 'vscode-webview' && 
+				editor.document.uri.path.includes(chatViewId)
+			);
+			if (views.length > 0) {
+				vscode.window.showTextDocument(views[0].document, views[0].viewColumn, true);
 			}
 		})
 	);

@@ -1,9 +1,5 @@
 import axios from 'axios';
-
-export interface PrometheusConfig {
-    url: string;
-    port: number;
-}
+import { Alert, PrometheusConfig, MetricValue } from './types';
 
 export interface PrometheusQueryResult {
     metric: {
@@ -12,7 +8,7 @@ export interface PrometheusQueryResult {
     value: [number, string];
 }
 
-export interface PrometheusAlert {
+interface RawPrometheusAlert {
     labels: {
         alertname: string;
         [key: string]: string;
@@ -50,7 +46,7 @@ export class PrometheusClient {
         }
     }
 
-    async queryRange(query: string, start: number, end: number, step: string): Promise<PrometheusQueryResult[]> {
+    async queryRange(query: string, start: number, end: number, step: string): Promise<MetricValue[]> {
         try {
             const response = await axios.get(`${this.baseUrl}/api/v1/query_range`, {
                 params: {
@@ -84,11 +80,20 @@ export class PrometheusClient {
         }
     }
 
-    async getAlerts(): Promise<PrometheusAlert[]> {
+    async getAlerts(): Promise<Alert[]> {
         try {
             const response = await axios.get(`${this.baseUrl}/api/v1/alerts`);
             if (response.data.status === 'success') {
-                return response.data.data.alerts;
+                return response.data.data.alerts
+                    .filter((alert: RawPrometheusAlert) => alert.state === 'firing')
+                    .map((alert: RawPrometheusAlert) => ({
+                        name: alert.labels.alertname,
+                        state: alert.state,
+                        labels: alert.labels,
+                        annotations: alert.annotations,
+                        activeAt: alert.activeAt,
+                        value: alert.value
+                    }));
             }
             throw new Error('Failed to fetch alerts');
         } catch (error) {
@@ -101,7 +106,7 @@ export class PrometheusClient {
         try {
             const response = await axios.get(`${this.baseUrl}/api/v1/rules`);
             if (response.data.status === 'success') {
-                return response.data.data.groups.flatMap((group: any) => group.rules);
+                return response.data.data.groups;
             }
             throw new Error('Failed to fetch rules');
         } catch (error) {

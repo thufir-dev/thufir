@@ -112,6 +112,16 @@
         "command": "thufir.configureLLM",
         "title": "Configure AI Provider",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "thufir.analyzeAlert",
+        "title": "Analyze Alert with AI",
+        "icon": "$(alert)"
+      },
+      {
+        "command": "chat.focus",
+        "title": "Focus Chat",
+        "icon": "$(comment-discussion)"
       }
     ],
     "menus": {
@@ -165,6 +175,11 @@
         },
         {
           "command": "serverExplorer.openPrometheusDashboard",
+          "when": "view == serverExplorer && viewItem =~ /(connectedServer|localPrometheus)/",
+          "group": "inline"
+        },
+        {
+          "command": "thufir.analyzeAlert",
           "when": "view == serverExplorer && viewItem =~ /(connectedServer|localPrometheus)/",
           "group": "inline"
         }
