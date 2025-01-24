@@ -88,45 +88,46 @@ export class ChatView implements vscode.WebviewViewProvider {
                 .messages {
                     flex: 1;
                     overflow-y: auto;
-                    padding: 16px;
+                    padding: 12px;
                     padding-bottom: 0;
                 }
                 .message {
-                    margin-bottom: 24px;
-                    padding: 12px 16px;
-                    border-radius: 8px;
-                    line-height: 1.5;
+                    margin-bottom: 16px;
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    line-height: 1.4;
+                    font-size: 12px;
                 }
                 .user-message {
                     background-color: var(--vscode-button-background);
-                    margin-left: 20%;
+                    margin-left: 16%;
                     position: relative;
                 }
                 .user-message::before {
                     content: "You";
                     position: absolute;
-                    top: -20px;
+                    top: -16px;
                     left: 0;
-                    font-size: 12px;
+                    font-size: 11px;
                     color: var(--vscode-descriptionForeground);
                 }
                 .assistant-message {
                     background-color: var(--vscode-editor-inactiveSelectionBackground);
-                    margin-right: 20%;
+                    margin-right: 16%;
                     position: relative;
                 }
                 .assistant-message::before {
                     content: "Assistant";
                     position: absolute;
-                    top: -20px;
+                    top: -16px;
                     left: 0;
-                    font-size: 12px;
+                    font-size: 11px;
                     color: var(--vscode-descriptionForeground);
                 }
                 .input-container {
                     display: flex;
-                    gap: 8px;
-                    padding: 16px;
+                    gap: 6px;
+                    padding: 12px;
                     background-color: var(--vscode-editor-background);
                     border-top: 1px solid var(--vscode-panel-border);
                     position: sticky;
@@ -134,29 +135,29 @@ export class ChatView implements vscode.WebviewViewProvider {
                 }
                 #userInput {
                     flex-grow: 1;
-                    padding: 8px 12px;
+                    padding: 6px 10px;
                     border: 1px solid var(--vscode-input-border);
                     background-color: var(--vscode-input-background);
                     color: var(--vscode-input-foreground);
-                    border-radius: 6px;
-                    font-size: 14px;
+                    border-radius: 4px;
+                    font-size: 12px;
                     resize: none;
-                    min-height: 20px;
-                    max-height: 150px;
+                    min-height: 18px;
+                    max-height: 120px;
                     overflow-y: auto;
-                    line-height: 20px;
+                    line-height: 1.4;
                 }
                 button {
-                    padding: 8px;
+                    padding: 6px;
                     background-color: var(--vscode-button-background);
                     color: var(--vscode-button-foreground);
                     border: none;
-                    border-radius: 6px;
+                    border-radius: 4px;
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    min-width: 36px;
+                    min-width: 28px;
                 }
                 button:hover {
                     background-color: var(--vscode-button-hoverBackground);
@@ -166,34 +167,30 @@ export class ChatView implements vscode.WebviewViewProvider {
                     word-wrap: break-word;
                     margin: 0;
                     font-family: var(--vscode-editor-font-family);
-                    font-size: 14px;
+                    font-size: 12px;
                 }
-                .messages::-webkit-scrollbar {
-                    width: 8px;
+                code {
+                    font-family: var(--vscode-editor-font-family);
+                    font-size: 12px;
+                    padding: 2px 4px;
+                    background-color: var(--vscode-textCodeBlock-background);
+                    border-radius: 3px;
                 }
-                .messages::-webkit-scrollbar-track {
-                    background-color: transparent;
+                p {
+                    margin: 0 0 8px 0;
                 }
-                .messages::-webkit-scrollbar-thumb {
-                    background-color: var(--vscode-scrollbarSlider-background);
-                    border-radius: 4px;
+                p:last-child {
+                    margin-bottom: 0;
                 }
-                .messages::-webkit-scrollbar-thumb:hover {
-                    background-color: var(--vscode-scrollbarSlider-hoverBackground);
+                ul, ol {
+                    margin: 0 0 8px 0;
+                    padding-left: 20px;
                 }
-                #userInput:focus {
-                    outline: none;
-                    border-color: var(--vscode-focusBorder);
+                li {
+                    margin-bottom: 4px;
                 }
-                #userInput::-webkit-scrollbar {
-                    width: 8px;
-                }
-                #userInput::-webkit-scrollbar-track {
-                    background-color: transparent;
-                }
-                #userInput::-webkit-scrollbar-thumb {
-                    background-color: var(--vscode-scrollbarSlider-background);
-                    border-radius: 4px;
+                li:last-child {
+                    margin-bottom: 0;
                 }
             </style>
         </head>
