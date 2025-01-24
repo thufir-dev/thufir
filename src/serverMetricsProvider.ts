@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Client, ClientChannel } from 'ssh2';
 import { ServerNode } from './serverNode';
+import { PrometheusClient } from './prometheusClient';
 
 interface ServerMetrics {
     cpu: number;
@@ -14,6 +15,9 @@ interface ServerMetrics {
     };
     uptime: number;
     loadAverage: number[];
+    prometheusMetrics?: {
+        [key: string]: number;
+    };
 }
 
 export class MetricItem extends vscode.TreeItem {
@@ -34,6 +38,7 @@ export class ServerMetricsProvider implements vscode.TreeDataProvider<MetricItem
     private serverConnections: Map<string, Client> = new Map();
     private serverMetrics: Map<string, ServerMetrics> = new Map();
     private updateIntervals: Map<string, NodeJS.Timeout> = new Map();
+    private prometheusClients: Map<string, PrometheusClient> = new Map();
 
     constructor() {}
 
@@ -66,6 +71,12 @@ export class ServerMetricsProvider implements vscode.TreeDataProvider<MetricItem
     startMonitoring(connection: Client, node: ServerNode) {
         const serverKey = this.getServerKey(node);
         this.serverConnections.set(serverKey, connection);
+
+        // Initialize Prometheus client if configured
+        if (node.prometheusConfig) {
+            this.prometheusClients.set(serverKey, new PrometheusClient(node.prometheusConfig));
+        }
+
         this.updateMetrics(node);
 
         // Set up periodic updates
@@ -88,6 +99,7 @@ export class ServerMetricsProvider implements vscode.TreeDataProvider<MetricItem
             this.serverConnections.delete(serverKey);
         }
 
+        this.prometheusClients.delete(serverKey);
         this.serverMetrics.delete(serverKey);
         this._onDidChangeTreeData.fire();
     }
@@ -95,6 +107,7 @@ export class ServerMetricsProvider implements vscode.TreeDataProvider<MetricItem
     private async updateMetrics(node: ServerNode) {
         const serverKey = this.getServerKey(node);
         const connection = this.serverConnections.get(serverKey);
+        const prometheusClient = this.prometheusClients.get(serverKey);
 
         if (!connection) {
             return;
@@ -102,6 +115,32 @@ export class ServerMetricsProvider implements vscode.TreeDataProvider<MetricItem
 
         try {
             const metrics = await this.collectMetrics(connection);
+
+            // Add Prometheus metrics if available
+            if (prometheusClient) {
+                try {
+                    const prometheusMetrics: { [key: string]: number } = {};
+                    
+                    // Query some basic Prometheus metrics
+                    const queries = [
+                        { name: 'node_cpu_seconds_total', query: 'rate(node_cpu_seconds_total{mode="idle"}[1m])' },
+                        { name: 'node_memory_MemAvailable_bytes', query: 'node_memory_MemAvailable_bytes' },
+                        { name: 'node_filesystem_avail_bytes', query: 'node_filesystem_avail_bytes' }
+                    ];
+
+                    for (const { name, query } of queries) {
+                        const result = await prometheusClient.queryInstant(query);
+                        if (result.length > 0) {
+                            prometheusMetrics[name] = parseFloat(result[0].value[1]);
+                        }
+                    }
+
+                    metrics.prometheusMetrics = prometheusMetrics;
+                } catch (error) {
+                    console.error('Error fetching Prometheus metrics:', error);
+                }
+            }
+
             this.serverMetrics.set(serverKey, metrics);
             this._onDidChangeTreeData.fire();
         } catch (error) {
@@ -180,5 +219,79 @@ export class ServerMetricsProvider implements vscode.TreeDataProvider<MetricItem
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
+    }
+
+    startMonitoringLocalPrometheus(node: ServerNode) {
+        if (!node.prometheusConfig) {
+            return;
+        }
+
+        const serverKey = this.getServerKey(node);
+        this.prometheusClients.set(serverKey, new PrometheusClient(node.prometheusConfig));
+
+        // Initialize empty metrics for the server
+        const emptyMetrics: ServerMetrics = {
+            cpu: 0,
+            memory: { used: 0, total: 0 },
+            disk: { used: 0, total: 0 },
+            uptime: 0,
+            loadAverage: [0, 0, 0],
+            prometheusMetrics: {}
+        };
+        this.serverMetrics.set(serverKey, emptyMetrics);
+
+        // Set up periodic updates
+        const interval = setInterval(() => this.updateLocalPrometheusMetrics(node), 5000);
+        this.updateIntervals.set(serverKey, interval);
+
+        // Initial update
+        this.updateLocalPrometheusMetrics(node);
+    }
+
+    private async updateLocalPrometheusMetrics(node: ServerNode) {
+        const serverKey = this.getServerKey(node);
+        const prometheusClient = this.prometheusClients.get(serverKey);
+
+        if (!prometheusClient) {
+            return;
+        }
+
+        try {
+            const metrics = this.serverMetrics.get(serverKey) || {
+                cpu: 0,
+                memory: { used: 0, total: 0 },
+                disk: { used: 0, total: 0 },
+                uptime: 0,
+                loadAverage: [0, 0, 0],
+                prometheusMetrics: {}
+            };
+
+            // Query Prometheus metrics
+            const queries = [
+                { name: 'node_cpu_seconds_total', query: 'rate(node_cpu_seconds_total{mode="idle"}[1m])' },
+                { name: 'node_memory_MemAvailable_bytes', query: 'node_memory_MemAvailable_bytes' },
+                { name: 'node_filesystem_avail_bytes', query: 'node_filesystem_avail_bytes' }
+            ];
+
+            const prometheusMetrics: { [key: string]: number } = {};
+            for (const { name, query } of queries) {
+                const result = await prometheusClient.queryInstant(query);
+                if (result.length > 0) {
+                    prometheusMetrics[name] = parseFloat(result[0].value[1]);
+                }
+            }
+
+            metrics.prometheusMetrics = prometheusMetrics;
+
+            // For local-only connections, we'll use Prometheus metrics to populate the main metrics
+            if (node.isLocalOnly && prometheusMetrics['node_cpu_seconds_total']) {
+                metrics.cpu = (1 - prometheusMetrics['node_cpu_seconds_total']) * 100;
+            }
+
+            this.serverMetrics.set(serverKey, metrics);
+            this._onDidChangeTreeData.fire();
+        } catch (error) {
+            console.error(`Error collecting Prometheus metrics for ${serverKey}:`, error);
+        }
     }
 }

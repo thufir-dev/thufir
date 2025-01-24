@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as ssh2 from 'ssh2';
 import { ServerNode } from './serverNode';
 import { ServerMetricsProvider } from './serverMetricsProvider';
+import { PrometheusClient } from './prometheusClient';
+import { PrometheusDashboard } from './prometheusDashboard';
 
 export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNode> {
     private _onDidChangeTreeData: vscode.EventEmitter<ServerNode | undefined | null | void> = new vscode.EventEmitter<ServerNode | undefined | null | void>();
@@ -16,11 +18,31 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
         this.context = context;
         this.metricsProvider = metricsProvider;
         this.loadServers();
+
+        // Register commands
+        context.subscriptions.push(
+            vscode.commands.registerCommand('serverExplorer.configurePrometheus', (node: ServerNode) => {
+                this.configurePrometheus(node);
+            }),
+            vscode.commands.registerCommand('serverExplorer.addLocalPrometheus', () => {
+                this.addLocalPrometheus();
+            }),
+            vscode.commands.registerCommand('serverExplorer.openPrometheusDashboard', (node: ServerNode) => {
+                this.openPrometheusDashboard(node);
+            })
+        );
     }
 
     private loadServers() {
         const savedServers = this.context.globalState.get<any[]>('servers') || [];
-        this.servers = savedServers.map(s => new ServerNode(s.label, s.host, s.username, s.port || 22));
+        this.servers = savedServers.map(s => new ServerNode(
+            s.label, 
+            s.host, 
+            s.username, 
+            s.port || 22,
+            s.prometheusConfig,
+            s.isLocalOnly || false
+        ));
     }
 
     private saveServers() {
@@ -28,7 +50,9 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
             label: s.label,
             host: s.host,
             username: s.username,
-            port: s.port
+            port: s.port,
+            prometheusConfig: s.prometheusConfig,
+            isLocalOnly: s.isLocalOnly
         })));
     }
 
@@ -81,6 +105,37 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
         });
         if (!password) return;
 
+        // Ask if user wants to configure Prometheus
+        const configurePrometheus = await vscode.window.showQuickPick(['Yes', 'No'], {
+            placeHolder: 'Do you want to configure Prometheus for this server?'
+        });
+
+        let prometheusConfig;
+        if (configurePrometheus === 'Yes') {
+            const prometheusUrl = await vscode.window.showInputBox({
+                placeHolder: 'Enter Prometheus URL (e.g., http://localhost)',
+                value: 'http://localhost'
+            });
+            if (!prometheusUrl) return;
+
+            const prometheusPortInput = await vscode.window.showInputBox({
+                placeHolder: 'Enter Prometheus port (default: 9090)',
+                value: '9090'
+            });
+            if (!prometheusPortInput) return;
+
+            const prometheusPort = parseInt(prometheusPortInput);
+            if (isNaN(prometheusPort) || prometheusPort < 1 || prometheusPort > 65535) {
+                vscode.window.showErrorMessage('Invalid Prometheus port number. Please enter a number between 1 and 65535.');
+                return;
+            }
+
+            prometheusConfig = {
+                url: prometheusUrl,
+                port: prometheusPort
+            };
+        }
+
         try {
             const conn = new ssh2.Client();
             
@@ -111,7 +166,7 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
                 });
             });
 
-            const server = new ServerNode(label, host, username, port);
+            const server = new ServerNode(label, host, username, port, prometheusConfig);
             this.servers.push(server);
             this.saveServers();
 
@@ -124,7 +179,7 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
             this._onDidChangeTreeData.fire(undefined);
             this.metricsProvider.startMonitoring(conn, server);
             
-            vscode.window.showInformationMessage(`Successfully added and connected to ${label}`);
+            vscode.window.showInformationMessage(`Successfully added and connected to ${label}${prometheusConfig ? ' with Prometheus integration' : ''}`);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
             vscode.window.showErrorMessage(`Failed to connect: ${errorMessage}`);
@@ -213,5 +268,153 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
 
     refresh(): void {
         this._onDidChangeTreeData.fire(undefined);
+    }
+
+    async configurePrometheus(node: ServerNode) {
+        // Ask if user wants to configure or remove Prometheus
+        const action = node.prometheusConfig 
+            ? await vscode.window.showQuickPick(['Reconfigure', 'Remove'], {
+                placeHolder: 'Do you want to reconfigure or remove Prometheus?'
+            })
+            : 'Configure';
+
+        if (!action) {
+            return;
+        }
+
+        if (action === 'Remove') {
+            node.prometheusConfig = undefined;
+            this.saveServers();
+            
+            // If server is connected, restart monitoring without Prometheus
+            const serverKey = this.getServerKey(node);
+            const connection = this.connections.get(serverKey);
+            if (connection && node.isConnected) {
+                this.metricsProvider.stopMonitoring(node);
+                this.metricsProvider.startMonitoring(connection, node);
+            }
+            
+            vscode.window.showInformationMessage(`Removed Prometheus configuration from ${node.label}`);
+            return;
+        }
+
+        const prometheusUrl = await vscode.window.showInputBox({
+            placeHolder: 'Enter Prometheus URL (e.g., http://localhost)',
+            value: node.prometheusConfig?.url || 'http://localhost'
+        });
+        if (!prometheusUrl) return;
+
+        const prometheusPortInput = await vscode.window.showInputBox({
+            placeHolder: 'Enter Prometheus port (default: 9090)',
+            value: node.prometheusConfig?.port.toString() || '9090'
+        });
+        if (!prometheusPortInput) return;
+
+        const prometheusPort = parseInt(prometheusPortInput);
+        if (isNaN(prometheusPort) || prometheusPort < 1 || prometheusPort > 65535) {
+            vscode.window.showErrorMessage('Invalid Prometheus port number. Please enter a number between 1 and 65535.');
+            return;
+        }
+
+        // Test the Prometheus connection before saving
+        try {
+            const testClient = new PrometheusClient({
+                url: prometheusUrl,
+                port: prometheusPort
+            });
+            await testClient.getMetricNames();
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            vscode.window.showErrorMessage(`Failed to connect to Prometheus: ${errorMessage}`);
+            return;
+        }
+
+        // Update the server's Prometheus configuration
+        node.prometheusConfig = {
+            url: prometheusUrl,
+            port: prometheusPort
+        };
+        this.saveServers();
+
+        // If server is connected, restart monitoring with new Prometheus config
+        const serverKey = this.getServerKey(node);
+        const connection = this.connections.get(serverKey);
+        if (connection && node.isConnected) {
+            this.metricsProvider.stopMonitoring(node);
+            this.metricsProvider.startMonitoring(connection, node);
+        }
+
+        vscode.window.showInformationMessage(`Successfully ${action.toLowerCase()}d Prometheus for ${node.label}`);
+    }
+
+    async addLocalPrometheus() {
+        const label = await vscode.window.showInputBox({
+            placeHolder: 'Enter a name for this Prometheus connection'
+        });
+        if (!label) return;
+
+        const prometheusUrl = await vscode.window.showInputBox({
+            placeHolder: 'Enter Prometheus URL (e.g., http://localhost)',
+            value: 'http://localhost'
+        });
+        if (!prometheusUrl) return;
+
+        const prometheusPortInput = await vscode.window.showInputBox({
+            placeHolder: 'Enter Prometheus port (default: 9090)',
+            value: '9090'
+        });
+        if (!prometheusPortInput) return;
+
+        const prometheusPort = parseInt(prometheusPortInput);
+        if (isNaN(prometheusPort) || prometheusPort < 1 || prometheusPort > 65535) {
+            vscode.window.showErrorMessage('Invalid port number. Please enter a number between 1 and 65535.');
+            return;
+        }
+
+        // Test the Prometheus connection before saving
+        try {
+            const testClient = new PrometheusClient({
+                url: prometheusUrl,
+                port: prometheusPort
+            });
+            await testClient.getMetricNames();
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+            vscode.window.showErrorMessage(`Failed to connect to Prometheus: ${errorMessage}`);
+            return;
+        }
+
+        const prometheusConfig = {
+            url: prometheusUrl,
+            port: prometheusPort
+        };
+
+        // Create a local-only server node
+        const server = new ServerNode(
+            label,
+            'localhost',
+            'local',
+            9090,
+            prometheusConfig,
+            true // isLocalOnly
+        );
+
+        this.servers.push(server);
+        this.saveServers();
+        
+        // Start monitoring Prometheus metrics
+        this.metricsProvider.startMonitoringLocalPrometheus(server);
+        this._onDidChangeTreeData.fire(undefined);
+        
+        vscode.window.showInformationMessage(`Successfully connected to local Prometheus at ${prometheusUrl}:${prometheusPort}`);
+    }
+
+    private openPrometheusDashboard(node: ServerNode) {
+        if (!node.prometheusConfig) {
+            vscode.window.showErrorMessage('This server does not have Prometheus configured');
+            return;
+        }
+
+        PrometheusDashboard.createOrShow(node);
     }
 } 

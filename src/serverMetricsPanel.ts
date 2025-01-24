@@ -14,6 +14,7 @@ interface ServerMetrics {
     };
     uptime: number;
     loadAverage: number[];
+    prometheusMetrics?: Record<string, number | string>;
 }
 
 export class ServerMetricsPanel {
@@ -94,6 +95,23 @@ export class ServerMetricsPanel {
         const uptimeHours = (metrics.uptime / 3600).toFixed(1);
         const loadAvg = metrics.loadAverage.map((v: number) => v.toFixed(2)).join(', ');
 
+        let prometheusMetricsHtml = '';
+        if (metrics.prometheusMetrics) {
+            prometheusMetricsHtml = `
+                <div class="metric-card">
+                    <div class="metric-title">Prometheus Metrics</div>
+                    <div class="prometheus-metrics">
+                        ${Object.entries(metrics.prometheusMetrics).map(([key, value]) => `
+                            <div class="prometheus-metric">
+                                <div class="metric-name">${key}</div>
+                                <div class="metric-value">${typeof value === 'number' ? value.toFixed(2) : value}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
         return `<!DOCTYPE html>
         <html lang="en">
         <head>
@@ -143,6 +161,22 @@ export class ServerMetricsPanel {
                     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
                     gap: 16px;
                 }
+                .prometheus-metrics {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 12px;
+                    margin-top: 12px;
+                }
+                .prometheus-metric {
+                    padding: 8px;
+                    border: 1px solid var(--vscode-panel-border);
+                    border-radius: 4px;
+                }
+                .metric-name {
+                    font-size: 12px;
+                    color: var(--vscode-descriptionForeground);
+                    margin-bottom: 4px;
+                }
             </style>
         </head>
         <body>
@@ -177,6 +211,7 @@ export class ServerMetricsPanel {
                     <div class="metric-value">${loadAvg}</div>
                 </div>
             </div>
+            ${prometheusMetricsHtml}
             <div class="metric-card">
                 <canvas id="metricsChart"></canvas>
             </div>
