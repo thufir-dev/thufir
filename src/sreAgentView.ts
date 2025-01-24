@@ -129,11 +129,11 @@ export class SREAgentView implements vscode.WebviewViewProvider {
                                 <div class="action-description">Get recommendations for server optimization</div>
                             </div>
                         </li>
-                        <li class="action-item" onclick="selectAction('security-audit')">
-                            <div class="action-icon">🔒</div>
+                        <li class="action-item" onclick="selectAction('remediation')">
+                            <div class="action-icon">🔧</div>
                             <div class="action-details">
-                                <div class="action-title">Security Audit</div>
-                                <div class="action-description">Check server security and get recommendations</div>
+                                <div class="action-title">Remediation</div>
+                                <div class="action-description">Get suggested fixes for server issues</div>
                             </div>
                         </li>
                         <li class="action-item" onclick="selectAction('backup-recovery')">

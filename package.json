@@ -196,8 +196,8 @@
     "keybindings": [
       {
         "command": "thufir.openAIAnalysis",
-        "key": "ctrl+l",
-        "mac": "cmd+l"
+        "key": "ctrl+t",
+        "mac": "cmd+t"
       }
     ]
   },

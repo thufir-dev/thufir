@@ -21,7 +21,7 @@ Thufir is an open-source VS Code extension that combines server monitoring with 
 - Monitor custom metrics and alerts
 
 ### AI Assistant
-- Built-in chat interface (Ctrl+L / Cmd+L)
+- Built-in chat interface (Ctrl+T / Cmd+T)
 - Multiple LLM providers supported:
   - OpenAI (GPT-4, GPT-3.5)
   - Anthropic (Claude 3)
@@ -33,7 +33,7 @@ Thufir is an open-source VS Code extension that combines server monitoring with 
 - Analyze server performance
 - Investigate incidents
 - Optimize system performance
-- Security auditing
+- Remediation suggestions
 - Backup & recovery planning
 
 ## Installation
@@ -52,7 +52,7 @@ Thufir is an open-source VS Code extension that combines server monitoring with 
 1. Open the Server Monitoring view in VS Code's activity bar
 2. Add a server using SSH credentials or connect to local Prometheus
 3. View real-time metrics in the Metrics panel
-4. Use Ctrl+L (Cmd+L on Mac) to open the AI Assistant
+4. Use Ctrl+T (Cmd+T on Mac) to open the AI Assistant
 5. Configure your preferred AI provider in settings
 
 ## Configuration
