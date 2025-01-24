@@ -1,5 +1,3 @@
-# Thufir - AI VS Code extension to help with SRE duties
-
 ![Thufir](resources/thufir_readme.png)
 
 Thufir is an open-source VS Code extension that combines server monitoring with AI assistance and agents to help developers manage and troubleshoot their servers efficiently.
