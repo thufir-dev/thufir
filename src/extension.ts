@@ -5,16 +5,23 @@ import { ServerExplorerProvider } from './serverExplorer';
 import { ServerMetricsProvider } from './serverMetricsProvider';
 import { ServerMetricsPanel } from './serverMetricsPanel';
 import { ServerNode } from './serverNode';
+import { LLMService } from './llmService';
+import { SREAgentView } from './sreAgentView';
+import { ChatView } from './chatView';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 	const metricsProvider = new ServerMetricsProvider();
 	const serverExplorerProvider = new ServerExplorerProvider(context, metricsProvider);
+	const sreAgentProvider = new SREAgentView(context.extensionUri);
+	const chatProvider = new ChatView(context.extensionUri);
 
 	// Register views
 	vscode.window.registerTreeDataProvider('serverExplorer', serverExplorerProvider);
 	vscode.window.registerTreeDataProvider('serverMetrics', metricsProvider);
+	vscode.window.registerWebviewViewProvider('sreAgent', sreAgentProvider);
+	vscode.window.registerWebviewViewProvider('chat', chatProvider);
 
 	// Register commands
 	context.subscriptions.push(
@@ -40,6 +47,22 @@ export function activate(context: vscode.ExtensionContext) {
 
 		vscode.commands.registerCommand('serverExplorer.showMetrics', (node: ServerNode) => {
 			ServerMetricsPanel.createOrShow(node, metricsProvider);
+		}),
+
+		vscode.commands.registerCommand('thufir.openAIAnalysis', () => {
+			vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
+		}),
+
+		vscode.commands.registerCommand('thufir.configureLLM', async () => {
+			try {
+				const llmService = await LLMService.getInstance();
+				await llmService.configure();
+				vscode.window.showInformationMessage('AI provider configured successfully');
+			} catch (error) {
+				if (error instanceof Error) {
+					vscode.window.showErrorMessage(`Failed to configure AI provider: ${error.message}`);
+				}
+			}
 		})
 	);
 

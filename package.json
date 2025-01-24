@@ -23,6 +23,13 @@
           "title": "Server Monitoring",
           "icon": "resources/server.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "ai-assistant",
+          "title": "AI Assistant",
+          "icon": "$(comment-discussion)"
+        }
       ]
     },
     "views": {
@@ -38,6 +45,20 @@
           "name": "Server Metrics",
           "icon": "resources/metrics.svg",
           "contextualTitle": "Server Metrics"
+        }
+      ],
+      "ai-assistant": [
+        {
+          "id": "chat",
+          "name": "Chat",
+          "icon": "$(comment-discussion)",
+          "type": "webview"
+        },
+        {
+          "id": "sreAgent",
+          "name": "SRE Agent",
+          "icon": "$(tools)",
+          "type": "webview"
         }
       ]
     },
@@ -81,6 +102,16 @@
         "command": "serverExplorer.openPrometheusDashboard",
         "title": "Open Prometheus Dashboard",
         "icon": "$(graph-scatter)"
+      },
+      {
+        "command": "thufir.openAIAnalysis",
+        "title": "Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "thufir.configureLLM",
+        "title": "Configure AI Provider",
+        "icon": "$(settings-gear)"
       }
     ],
     "menus": {
@@ -99,6 +130,16 @@
           "command": "serverExplorer.refresh",
           "when": "view == serverExplorer",
           "group": "navigation"
+        },
+        {
+          "command": "thufir.openAIAnalysis",
+          "when": "view == chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "thufir.configureLLM",
+          "when": "view == chat",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -136,9 +177,29 @@
           "type": "number",
           "default": 5000,
           "description": "Interval in milliseconds to refresh server metrics"
+        },
+        "thufir.llm.provider": {
+          "type": "string",
+          "enum": ["openai", "anthropic", "google"],
+          "description": "The AI provider to use for analysis"
+        },
+        "thufir.llm.apiKey": {
+          "type": "string",
+          "description": "API key for the selected AI provider"
+        },
+        "thufir.llm.model": {
+          "type": "string",
+          "description": "The model to use for the selected AI provider"
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "thufir.openAIAnalysis",
+        "key": "ctrl+l",
+        "mac": "cmd+l"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
