@@ -1,4 +1,4 @@
-# Thufir - AI-Powered Server Monitoring for VS Code
+# Thufir - AI VS Code extension to help with SRE duties
 
 ![Thufir](resources/thufir_readme.png)
 
