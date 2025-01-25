@@ -26,27 +26,7 @@ export class PrometheusDashboard {
     private readonly _serverNode: ServerNode;
     private readonly _prometheusClient: PrometheusClient;
     private _disposables: vscode.Disposable[] = [];
-    private _dashboardPanels: DashboardPanel[] = [
-        {
-            id: 'alerts',
-            title: 'Active Alerts',
-            type: 'alerts'
-        },
-        {
-            id: 'cpu',
-            title: 'CPU Usage',
-            type: 'graph',
-            query: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100)',
-            timeRange: '1h'
-        },
-        {
-            id: 'memory',
-            title: 'Memory Usage',
-            type: 'graph',
-            query: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100',
-            timeRange: '1h'
-        }
-    ];
+    private _dashboardPanels: DashboardPanel[] = [];
 
     private constructor(panel: vscode.WebviewPanel, serverNode: ServerNode) {
         this._panel = panel;
@@ -57,6 +37,9 @@ export class PrometheusDashboard {
         }
         
         this._prometheusClient = new PrometheusClient(serverNode.prometheusConfig);
+
+        // Load saved panels or use defaults
+        this._loadPanels();
 
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
         
@@ -71,7 +54,7 @@ export class PrometheusDashboard {
                         await this._addPanel(message.panel);
                         break;
                     case 'removePanel':
-                        this._removePanel(message.panelId);
+                        await this._removePanel(message.panelId);
                         break;
                     case 'editPanel':
                         await this._editPanel(message.panel);
@@ -115,6 +98,49 @@ export class PrometheusDashboard {
         );
 
         PrometheusDashboard.currentPanel = new PrometheusDashboard(panel, serverNode);
+    }
+
+    private _getPanelStorageKey(): string {
+        return `prometheus-dashboard.panels.${this._serverNode.host}`;
+    }
+
+    private _loadPanels(): void {
+        const savedPanels = vscode.workspace.getConfiguration('thufir').get<DashboardPanel[]>(this._getPanelStorageKey());
+        
+        if (savedPanels && savedPanels.length > 0) {
+            this._dashboardPanels = savedPanels;
+        } else {
+            // Default panels
+            this._dashboardPanels = [
+                {
+                    id: 'alerts',
+                    title: 'Active Alerts',
+                    type: 'alerts'
+                },
+                {
+                    id: 'cpu',
+                    title: 'CPU Usage',
+                    type: 'graph',
+                    query: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100)',
+                    timeRange: '1h'
+                },
+                {
+                    id: 'memory',
+                    title: 'Memory Usage',
+                    type: 'graph',
+                    query: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100',
+                    timeRange: '1h'
+                }
+            ];
+        }
+    }
+
+    private async _savePanels(): Promise<void> {
+        await vscode.workspace.getConfiguration('thufir').update(
+            this._getPanelStorageKey(),
+            this._dashboardPanels,
+            vscode.ConfigurationTarget.Global
+        );
     }
 
     private async _update() {
@@ -237,22 +263,54 @@ export class PrometheusDashboard {
         }
 
         this._dashboardPanels.push(panel);
+        await this._savePanels();
         await this._update();
     }
 
-    private _removePanel(panelId: string) {
+    private async _removePanel(panelId: string) {
         // Don't allow removing the alerts panel
         if (panelId === 'alerts') {
             return;
         }
         this._dashboardPanels = this._dashboardPanels.filter(p => p.id !== panelId);
-        this._update();
+        await this._savePanels();
+        await this._update();
     }
 
     private async _editPanel(panel: DashboardPanel) {
+        const title = await vscode.window.showInputBox({
+            value: panel.title,
+            placeHolder: 'Enter panel title'
+        });
+        if (!title) return;
+
+        const query = await vscode.window.showInputBox({
+            value: panel.query,
+            placeHolder: 'Enter Prometheus query'
+        });
+        if (!query) return;
+
+        const timeRangeOptions = [
+            { label: '1h', description: 'Last hour' },
+            { label: '6h', description: 'Last 6 hours' },
+            { label: '12h', description: 'Last 12 hours' },
+            { label: '24h', description: 'Last 24 hours' }
+        ];
+        
+        const selectedTimeRange = await vscode.window.showQuickPick(timeRangeOptions, {
+            placeHolder: 'Select time range'
+        });
+        if (!selectedTimeRange) return;
+
         const index = this._dashboardPanels.findIndex(p => p.id === panel.id);
         if (index !== -1) {
-            this._dashboardPanels[index] = panel;
+            this._dashboardPanels[index] = {
+                ...this._dashboardPanels[index],
+                title,
+                query,
+                timeRange: selectedTimeRange.label
+            };
+            await this._savePanels();
             await this._update();
         }
     }
@@ -421,6 +479,8 @@ export class PrometheusDashboard {
                 }
                 .toolbar {
                     margin-bottom: 20px;
+                    display: flex;
+                    gap: 8px;
                 }
                 .button {
                     background-color: var(--vscode-button-background);
@@ -451,6 +511,10 @@ export class PrometheusDashboard {
                     height: 300px;
                     color: var(--vscode-descriptionForeground);
                     font-style: italic;
+                }
+                .panel-actions {
+                    display: flex;
+                    gap: 8px;
                 }
             </style>
             <link href="https://cdn.jsdelivr.net/npm/vscode-codicons/dist/codicon.css" rel="stylesheet">
@@ -489,11 +553,23 @@ export class PrometheusDashboard {
                 }
 
                 function removePanel(panelId) {
-                    vscode.postMessage({ command: 'removePanel', panelId });
+                    // Remove the panel element immediately from the DOM
+                    const panelElement = document.getElementById('panel-' + panelId);
+                    if (panelElement) {
+                        panelElement.remove();
+                    }
+                    
+                    vscode.postMessage({ 
+                        command: 'removePanel', 
+                        panelId: panelId 
+                    });
                 }
 
                 function editPanel(panel) {
-                    vscode.postMessage({ command: 'editPanel', panel });
+                    vscode.postMessage({ 
+                        command: 'editPanel', 
+                        panel: panel
+                    });
                 }
 
                 // Initialize charts
@@ -546,11 +622,17 @@ export class PrometheusDashboard {
                 const hasData = panelData[panel.id]?.length > 0 && panelData[panel.id][0]?.values?.length > 0;
                 
                 return `
-                <div class="panel">
+                <div class="panel" id="panel-${panel.id}">
                     <div class="panel-header">
                         <div class="panel-title">${panel.title}</div>
                         <div class="panel-actions">
-                            <button class="button" onclick="editPanel(${JSON.stringify(panel)})">
+                            <button class="button" onclick='editPanel(${JSON.stringify({
+                                id: panel.id,
+                                title: panel.title,
+                                type: panel.type,
+                                query: panel.query,
+                                timeRange: panel.timeRange
+                            })})'>
                                 <span class="codicon codicon-edit"></span>
                                 Edit
                             </button>
