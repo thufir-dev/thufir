@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { ServerNode } from './serverNode';
 
 export class SREAgentView implements vscode.WebviewViewProvider {
     public static readonly viewType = 'sreAgent';
@@ -25,10 +26,63 @@ export class SREAgentView implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (data) => {
             switch (data.type) {
                 case 'selectAction':
-                    vscode.window.showInformationMessage('This feature will be implemented soon!');
+                    switch (data.action) {
+                        case 'analyze-metrics':
+                            // Show server selection quickpick
+                            const serverItems = await this._getConnectedServers();
+                            if (serverItems.length === 0) {
+                                vscode.window.showErrorMessage('No connected servers available. Please connect to a server first.');
+                                return;
+                            }
+
+                            const selectedServer = await vscode.window.showQuickPick(serverItems, {
+                                placeHolder: 'Select a server to analyze metrics'
+                            });
+
+                            if (selectedServer) {
+                                vscode.commands.executeCommand('thufir.analyzeMetrics', selectedServer.node);
+                            }
+                            break;
+                        default:
+                            vscode.window.showInformationMessage('This feature will be implemented soon!');
+                            break;
+                    }
                     break;
             }
         });
+    }
+
+    private async _getConnectedServers(): Promise<Array<{ label: string; node: ServerNode }>> {
+        const treeDataProvider = await this._getServerExplorerProvider();
+        const nodes = await treeDataProvider.getChildren();
+
+        if (!nodes || nodes.length === 0) {
+            return [];
+        }
+
+        // Filter for connected servers only and ensure they are ServerNode instances
+        return nodes
+            .filter((node): node is ServerNode => 
+                node instanceof ServerNode && 
+                (node.contextValue === 'connectedServer' || node.contextValue === 'localPrometheus')
+            )
+            .map(node => ({
+                label: `${node.label} (${node.host})`,
+                node: node
+            }));
+    }
+
+    private async _getServerExplorerProvider(): Promise<vscode.TreeDataProvider<ServerNode>> {
+        const extension = vscode.extensions.all.find(ext => 
+            ext.packageJSON.name === 'thufir'
+        );
+
+        if (!extension) {
+            throw new Error('Server Explorer provider not found');
+        }
+
+        await extension.activate();
+        return extension.exports.serverExplorerProvider;
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {

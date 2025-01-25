@@ -27,7 +27,7 @@
       "panel": [
         {
           "id": "ai-assistant",
-          "title": "AI Assistant",
+          "title": "Thufir Assistant",
           "icon": "$(comment-discussion)"
         }
       ]

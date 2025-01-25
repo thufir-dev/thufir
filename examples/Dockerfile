@@ -1,19 +1,24 @@
-FROM ubuntu:20.04
+# Use a lightweight base image
+FROM ubuntu:22.04
 
-# Install dependencies and OpenSSH server
-RUN apt-get update && apt-get install -y openssh-server prometheus && \
+# Install necessary packages
+RUN apt-get update && \
+    apt-get install -y openssh-server sudo curl && \
     mkdir /var/run/sshd
 
-# Configure SSH server
-RUN echo "PermitRootLogin yes" >> /etc/ssh/sshd_config && \
-    echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config && \
-    echo "root:root" | chpasswd
+# Create a user with password authentication
+RUN useradd -m -s /bin/bash dummyuser && \
+    echo 'dummyuser:password' | chpasswd && \
+    echo "dummyuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Expose SSH and Prometheus ports
-EXPOSE 22 9090
+# Expose SSH port
+EXPOSE 22
 
-# Copy Prometheus configuration (optional)
-# COPY prometheus.yml /etc/prometheus/prometheus.yml
+# Add a script to display stats on login
+RUN echo "echo 'Welcome! Current Stats:'" >> /home/dummyuser/.bashrc && \
+    echo "uptime" >> /home/dummyuser/.bashrc && \
+    echo "free -h" >> /home/dummyuser/.bashrc && \
+    echo "df -h | grep '^/dev/'" >> /home/dummyuser/.bashrc
 
-# Start SSH and Prometheus
-CMD ["/bin/sh", "-c", "/usr/sbin/sshd && /usr/bin/prometheus --config.file=/etc/prometheus/prometheus.yml"]
+# Start the SSH service
+CMD ["/usr/sbin/sshd", "-D"]

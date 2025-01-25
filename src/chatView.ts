@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { LLMService } from './llmService';
 import { ServerNode } from './serverNode';
 import { Alert, MetricValue } from './types';
+import { ServerMetrics } from './serverMetricsProvider';
 
 interface Message {
     role: 'user' | 'assistant' | 'system';
@@ -151,6 +152,82 @@ export class ChatView implements vscode.WebviewViewProvider {
             
             if (error instanceof Error) {
                 vscode.window.showErrorMessage(`Failed to analyze alert: ${error.message}`);
+            }
+        }
+    }
+
+    public async analyzeMetrics(node: ServerNode, metrics: ServerMetrics) {
+        if (!this._view) {
+            return;
+        }
+
+        // Make sure the view is revealed
+        this._view.show(true); // true means preserve focus
+
+        // Add the initial system message
+        this._messages.push({
+            role: 'system',
+            content: `Metrics Analysis Request for ${node.label}`
+        });
+
+        // Add a temporary loading message
+        const loadingMessageIndex = this._messages.length;
+        this._messages.push({
+            role: 'assistant',
+            content: 'Analyzing server metrics...'
+        });
+        this._updateView();
+
+        const llmService = await LLMService.getInstance();
+        
+        // Format the metrics data for analysis
+        const metricsAnalysisPrompt = `
+            I need help analyzing the following server metrics from ${node.label} (${node.host}):
+            
+            System Metrics:
+            - CPU Usage: ${metrics.cpu.toFixed(1)}%
+            - Memory Usage: ${(metrics.memory.used / 1024).toFixed(1)}GB / ${(metrics.memory.total / 1024).toFixed(1)}GB (${((metrics.memory.used / metrics.memory.total) * 100).toFixed(1)}%)
+            - Disk Usage: ${metrics.disk.used}GB / ${metrics.disk.total}GB (${((metrics.disk.used / metrics.disk.total) * 100).toFixed(1)}%)
+            - System Uptime: ${(metrics.uptime / 3600).toFixed(1)} hours
+            - Load Average (1m, 5m, 15m): ${metrics.loadAverage.map((v: number) => v.toFixed(2)).join(', ')}
+            
+            ${metrics.prometheusMetrics ? `
+            Prometheus Metrics:
+            ${Object.entries(metrics.prometheusMetrics)
+                .map(([key, value]) => `- ${key}: ${typeof value === 'number' ? value.toFixed(2) : value}`)
+                .join('\n')}
+            ` : ''}
+            
+            Please provide a comprehensive analysis including:
+            1. System Health Overview - What is the overall health status of the server?
+            2. Resource Utilization - Are any resources (CPU, memory, disk) under stress?
+            3. Performance Analysis - How is the server performing based on load averages and metrics?
+            4. Potential Issues - Are there any concerning patterns or potential problems?
+            5. Optimization Recommendations - What can be done to improve performance?
+            6. Monitoring Suggestions - What additional metrics or alerts would be helpful?
+        `;
+
+        try {
+            const analysis = await llmService.analyze(metricsAnalysisPrompt);
+            // Replace the loading message with the actual analysis
+            this._messages[loadingMessageIndex] = {
+                role: 'assistant',
+                content: analysis
+            };
+            this._updateView();
+            
+            // Ensure the view is visible and focused after the analysis
+            this._view.show(true);
+        } catch (error) {
+            // Replace loading message with error
+            this._messages[loadingMessageIndex] = {
+                role: 'assistant',
+                content: 'Failed to analyze metrics. Please try again.'
+            };
+            this._updateView();
+            
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to analyze metrics: ${error.message}`);
             }
         }
     }

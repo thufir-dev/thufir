@@ -96,6 +96,29 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}),
 
+		vscode.commands.registerCommand('thufir.analyzeMetrics', async (node: ServerNode) => {
+			try {
+				const metrics = metricsProvider.getMetrics(node);
+				if (!metrics) {
+					vscode.window.showErrorMessage('No metrics available for this server');
+					return;
+				}
+
+				// First reveal the AI Assistant panel
+				await vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
+				
+				// Then focus specifically on the chat view within the panel
+				await vscode.commands.executeCommand('chat.focus');
+
+				// Send to chat for analysis
+				chatProvider.analyzeMetrics(node, metrics);
+			} catch (error) {
+				if (error instanceof Error) {
+					vscode.window.showErrorMessage(`Failed to analyze metrics: ${error.message}`);
+				}
+			}
+		}),
+
 		vscode.commands.registerCommand('chat.focus', () => {
 			// Focus on the chat view
 			vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
@@ -142,6 +165,13 @@ export function activate(context: vscode.ExtensionContext) {
 	writeIcon('metrics.svg', metricsIconContent);
 	writeIcon('server-connected.svg', serverConnectedIconContent);
 	writeIcon('server-disconnected.svg', serverDisconnectedIconContent);
+
+	// Export providers for access by other parts of the extension
+	return {
+		serverExplorerProvider,
+		metricsProvider,
+		chatProvider
+	};
 }
 
 // This method is called when your extension is deactivated

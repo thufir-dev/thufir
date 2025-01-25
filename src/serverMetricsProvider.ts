@@ -3,7 +3,7 @@ import { Client, ClientChannel } from 'ssh2';
 import { ServerNode } from './serverNode';
 import { PrometheusClient } from './prometheusClient';
 
-interface ServerMetrics {
+export interface ServerMetrics {
     cpu: number;
     memory: {
         used: number;
