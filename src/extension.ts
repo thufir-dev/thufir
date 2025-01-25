@@ -119,6 +119,29 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}),
 
+		vscode.commands.registerCommand('thufir.optimizePerformance', async (node: ServerNode) => {
+			try {
+				const metrics = metricsProvider.getMetrics(node);
+				if (!metrics) {
+					vscode.window.showErrorMessage('No metrics available for this server');
+					return;
+				}
+
+				// First reveal the AI Assistant panel
+				await vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
+				
+				// Then focus specifically on the chat view within the panel
+				await vscode.commands.executeCommand('chat.focus');
+
+				// Send to chat for performance analysis
+				chatProvider.analyzePerformance(node, metrics);
+			} catch (error) {
+				if (error instanceof Error) {
+					vscode.window.showErrorMessage(`Failed to analyze performance: ${error.message}`);
+				}
+			}
+		}),
+
 		vscode.commands.registerCommand('chat.focus', () => {
 			// Focus on the chat view
 			vscode.commands.executeCommand('workbench.view.extension.ai-assistant');

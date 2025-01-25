@@ -43,6 +43,22 @@ export class SREAgentView implements vscode.WebviewViewProvider {
                                 vscode.commands.executeCommand('thufir.analyzeMetrics', selectedServer.node);
                             }
                             break;
+                        case 'optimize-performance':
+                            // Show server selection quickpick
+                            const perfServerItems = await this._getConnectedServers();
+                            if (perfServerItems.length === 0) {
+                                vscode.window.showErrorMessage('No connected servers available. Please connect to a server first.');
+                                return;
+                            }
+
+                            const selectedPerfServer = await vscode.window.showQuickPick(perfServerItems, {
+                                placeHolder: 'Select a server to optimize performance'
+                            });
+
+                            if (selectedPerfServer) {
+                                vscode.commands.executeCommand('thufir.optimizePerformance', selectedPerfServer.node);
+                            }
+                            break;
                         default:
                             vscode.window.showInformationMessage('This feature will be implemented soon!');
                             break;

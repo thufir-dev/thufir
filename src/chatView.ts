@@ -232,6 +232,84 @@ export class ChatView implements vscode.WebviewViewProvider {
         }
     }
 
+    public async analyzePerformance(node: ServerNode, metrics: ServerMetrics) {
+        if (!this._view) {
+            return;
+        }
+
+        // Make sure the view is revealed
+        this._view.show(true); // true means preserve focus
+
+        // Add the initial system message
+        this._messages.push({
+            role: 'system',
+            content: `Performance Optimization Analysis for ${node.label}`
+        });
+
+        // Add a temporary loading message
+        const loadingMessageIndex = this._messages.length;
+        this._messages.push({
+            role: 'assistant',
+            content: 'Analyzing system performance...'
+        });
+        this._updateView();
+
+        const llmService = await LLMService.getInstance();
+        
+        // Format the metrics data for performance analysis
+        const performanceAnalysisPrompt = `
+            I need help optimizing the performance of server ${node.label} (${node.host}). Here are the current metrics:
+            
+            System Metrics:
+            - CPU Usage: ${metrics.cpu.toFixed(1)}%
+            - Memory Usage: ${(metrics.memory.used / 1024).toFixed(1)}GB / ${(metrics.memory.total / 1024).toFixed(1)}GB (${((metrics.memory.used / metrics.memory.total) * 100).toFixed(1)}%)
+            - Disk Usage: ${metrics.disk.used}GB / ${metrics.disk.total}GB (${((metrics.disk.used / metrics.disk.total) * 100).toFixed(1)}%)
+            - System Uptime: ${(metrics.uptime / 3600).toFixed(1)} hours
+            - Load Average (1m, 5m, 15m): ${metrics.loadAverage.map((v: number) => v.toFixed(2)).join(', ')}
+            
+            ${metrics.prometheusMetrics ? `
+            Prometheus Metrics:
+            ${Object.entries(metrics.prometheusMetrics)
+                .map(([key, value]) => `- ${key}: ${typeof value === 'number' ? value.toFixed(2) : value}`)
+                .join('\n')}
+            ` : ''}
+            
+            Please provide a comprehensive performance optimization analysis including:
+            1. Performance Bottlenecks - Identify any current or potential bottlenecks
+            2. Resource Efficiency - Analyze how efficiently resources are being used
+            3. System Tuning - Recommend system-level optimizations (e.g., kernel parameters, service configurations)
+            4. Resource Allocation - Suggest optimal resource allocation adjustments
+            5. Monitoring Improvements - Recommend additional metrics or alerts to track performance
+            6. Long-term Recommendations - Strategic improvements for sustained performance
+            7. Cost Optimization - If applicable, suggest ways to optimize resource usage for cost efficiency
+            8. Best Practices - Recommend industry best practices for similar workloads
+        `;
+
+        try {
+            const analysis = await llmService.analyze(performanceAnalysisPrompt);
+            // Replace the loading message with the actual analysis
+            this._messages[loadingMessageIndex] = {
+                role: 'assistant',
+                content: analysis
+            };
+            this._updateView();
+            
+            // Ensure the view is visible and focused after the analysis
+            this._view.show(true);
+        } catch (error) {
+            // Replace loading message with error
+            this._messages[loadingMessageIndex] = {
+                role: 'assistant',
+                content: 'Failed to analyze performance. Please try again.'
+            };
+            this._updateView();
+            
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to analyze performance: ${error.message}`);
+            }
+        }
+    }
+
     private _getHtmlForWebview(webview: vscode.Webview) {
         return `<!DOCTYPE html>
         <html lang="en">
