@@ -28,7 +28,7 @@ Thufir is an open-source VS Code extension that combines server monitoring with 
 - Analyze server metrics and alerts
 - Get AI-powered recommendations
 
-### SRE Tools
+### SRE Agent
 - Analyze server performance
 - Investigate incidents
 - Optimize system performance
