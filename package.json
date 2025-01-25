@@ -20,8 +20,8 @@
       "activitybar": [
         {
           "id": "server-monitoring",
-          "title": "Server Monitoring",
-          "icon": "resources/server.svg"
+          "title": "Thufir",
+          "icon": "resources/logo.png"
         }
       ],
       "panel": [
@@ -175,11 +175,6 @@
         },
         {
           "command": "serverExplorer.openPrometheusDashboard",
-          "when": "view == serverExplorer && viewItem =~ /(connectedServer|localPrometheus)/",
-          "group": "inline"
-        },
-        {
-          "command": "thufir.analyzeAlert",
           "when": "view == serverExplorer && viewItem =~ /(connectedServer|localPrometheus)/",
           "group": "inline"
         }
