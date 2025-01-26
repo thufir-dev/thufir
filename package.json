@@ -1,15 +1,23 @@
 {
   "name": "thufir",
+  "icon": "resources/logo.png",
   "displayName": "thufir",
   "description": "An open source AI extension for VS Code to help devs with SRE duties",
-  "version": "0.0.1",
+  "version": "0.9.252",
+  "publisher":"thufirdev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thufir-dev/thufir.git"
+  },
   "engines": {
     "vscode": "^1.96.0"
   },
   "categories": [
     "Other",
     "Visualization",
-    "Monitoring"
+    "AI",
+    "Chat",
+    "Machine Learning"
   ],
   "activationEvents": [
     "onView:serverExplorer"
@@ -104,6 +112,16 @@
         "icon": "$(graph-scatter)"
       },
       {
+        "command": "serverExplorer.viewLogs",
+        "title": "View Server Logs",
+        "icon": "$(output)"
+      },
+      {
+        "command": "serverExplorer.configureLogs",
+        "title": "Configure Log Sources",
+        "icon": "$(settings-gear)"
+      },
+      {
         "command": "thufir.openAIAnalysis",
         "title": "Open Chat",
         "icon": "$(comment-discussion)"
@@ -177,6 +195,16 @@
           "command": "serverExplorer.openPrometheusDashboard",
           "when": "view == serverExplorer && viewItem =~ /(connectedServer|localPrometheus)/",
           "group": "inline"
+        },
+        {
+          "command": "serverExplorer.viewLogs",
+          "when": "view == serverExplorer && viewItem == connectedServer",
+          "group": "inline"
+        },
+        {
+          "command": "serverExplorer.configureLogs",
+          "when": "view == serverExplorer && viewItem == connectedServer",
+          "group": "inline"
         }
       ]
     },
@@ -190,7 +218,11 @@
         },
         "thufir.llm.provider": {
           "type": "string",
-          "enum": ["openai", "anthropic", "google"],
+          "enum": [
+            "openai",
+            "anthropic",
+            "google"
+          ],
           "description": "The AI provider to use for analysis"
         },
         "thufir.llm.apiKey": {
@@ -200,6 +232,18 @@
         "thufir.llm.model": {
           "type": "string",
           "description": "The model to use for the selected AI provider"
+        },
+        "thufir.logs.defaultPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/var/log/syslog",
+            "/var/log/auth.log",
+            "/var/log/messages"
+          ],
+          "description": "Default log file paths to monitor"
         }
       }
     },
@@ -220,7 +264,7 @@
     "test": "vscode-test"
   },
   "dependencies": {
-    "axios": "^1.6.7",
+    "axios": "^1.7.9",
     "chart.js": "^4.4.1",
     "node-os-utils": "^1.3.7",
     "ssh2": "^1.16.0",

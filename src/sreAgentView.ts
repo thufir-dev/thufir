@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { ServerNode } from './serverNode';
+import { PrometheusClient } from './prometheusClient';
+import { Alert, MetricValue } from './types';
 
 export class SREAgentView implements vscode.WebviewViewProvider {
     public static readonly viewType = 'sreAgent';
@@ -28,36 +30,16 @@ export class SREAgentView implements vscode.WebviewViewProvider {
                 case 'selectAction':
                     switch (data.action) {
                         case 'analyze-metrics':
-                            // Show server selection quickpick
-                            const serverItems = await this._getConnectedServers();
-                            if (serverItems.length === 0) {
-                                vscode.window.showErrorMessage('No connected servers available. Please connect to a server first.');
-                                return;
-                            }
-
-                            const selectedServer = await vscode.window.showQuickPick(serverItems, {
-                                placeHolder: 'Select a server to analyze metrics'
-                            });
-
-                            if (selectedServer) {
-                                vscode.commands.executeCommand('thufir.analyzeMetrics', selectedServer.node);
-                            }
+                            await this._handleAnalyzeMetrics();
+                            break;
+                        case 'investigate-incident':
+                            await this._handleInvestigateIncident();
                             break;
                         case 'optimize-performance':
-                            // Show server selection quickpick
-                            const perfServerItems = await this._getConnectedServers();
-                            if (perfServerItems.length === 0) {
-                                vscode.window.showErrorMessage('No connected servers available. Please connect to a server first.');
-                                return;
-                            }
-
-                            const selectedPerfServer = await vscode.window.showQuickPick(perfServerItems, {
-                                placeHolder: 'Select a server to optimize performance'
-                            });
-
-                            if (selectedPerfServer) {
-                                vscode.commands.executeCommand('thufir.optimizePerformance', selectedPerfServer.node);
-                            }
+                            await this._handleOptimizePerformance();
+                            break;
+                        case 'remediation':
+                            await this._handleRemediation();
                             break;
                         default:
                             vscode.window.showInformationMessage('This feature will be implemented soon!');
@@ -66,6 +48,82 @@ export class SREAgentView implements vscode.WebviewViewProvider {
                     break;
             }
         });
+    }
+
+    private async _handleAnalyzeMetrics() {
+        const serverItems = await this._getConnectedServers();
+        if (serverItems.length === 0) {
+            vscode.window.showErrorMessage('No connected servers available. Please connect to a server first.');
+            return;
+        }
+
+        const selectedServer = await vscode.window.showQuickPick(serverItems, {
+            placeHolder: 'Select a server to analyze metrics'
+        });
+
+        if (selectedServer) {
+            vscode.commands.executeCommand('thufir.analyzeMetrics', selectedServer.node);
+        }
+    }
+
+    private async _handleInvestigateIncident() {
+        const serverItems = await this._getConnectedServers();
+        if (serverItems.length === 0) {
+            vscode.window.showErrorMessage('No connected servers available. Please connect to a server first.');
+            return;
+        }
+
+        const selectedServer = await vscode.window.showQuickPick(serverItems, {
+            placeHolder: 'Select a server to investigate incident'
+        });
+
+        if (selectedServer) {
+            vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Analyzing incidents on ${selectedServer.label}...`,
+                cancellable: false
+            }, async () => {
+                await vscode.commands.executeCommand('thufir.analyzeIncident', selectedServer.node);
+            });
+        }
+    }
+
+    private async _handleOptimizePerformance() {
+        const serverItems = await this._getConnectedServers();
+        if (serverItems.length === 0) {
+            vscode.window.showErrorMessage('No connected servers available. Please connect to a server first.');
+            return;
+        }
+
+        const selectedServer = await vscode.window.showQuickPick(serverItems, {
+            placeHolder: 'Select a server to optimize performance'
+        });
+
+        if (selectedServer) {
+            vscode.commands.executeCommand('thufir.optimizePerformance', selectedServer.node);
+        }
+    }
+
+    private async _handleRemediation() {
+        const serverItems = await this._getConnectedServers();
+        if (serverItems.length === 0) {
+            vscode.window.showErrorMessage('No connected servers available. Please connect to a server first.');
+            return;
+        }
+
+        const selectedServer = await vscode.window.showQuickPick(serverItems, {
+            placeHolder: 'Select a server for remediation analysis'
+        });
+
+        if (selectedServer) {
+            vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Analyzing remediation options for ${selectedServer.label}...`,
+                cancellable: false
+            }, async () => {
+                await vscode.commands.executeCommand('thufir.analyzeRemediation', selectedServer.node);
+            });
+        }
     }
 
     private async _getConnectedServers(): Promise<Array<{ label: string; node: ServerNode }>> {

@@ -3,6 +3,7 @@ import { LLMService } from './llmService';
 import { ServerNode } from './serverNode';
 import { Alert, MetricValue } from './types';
 import { ServerMetrics } from './serverMetricsProvider';
+import { PrometheusClient } from './prometheusClient';
 
 interface Message {
     role: 'user' | 'assistant' | 'system';
@@ -306,6 +307,264 @@ export class ChatView implements vscode.WebviewViewProvider {
             
             if (error instanceof Error) {
                 vscode.window.showErrorMessage(`Failed to analyze performance: ${error.message}`);
+            }
+        }
+    }
+
+    public async analyzeIncident(node: ServerNode, metrics: ServerMetrics) {
+        if (!this._view) {
+            return;
+        }
+
+        // Make sure the view is revealed
+        this._view.show(true);
+
+        // Add the initial system message
+        this._messages.push({
+            role: 'system',
+            content: `Incident Investigation for ${node.label}`
+        });
+
+        // Add a temporary loading message
+        const loadingMessageIndex = this._messages.length;
+        this._messages.push({
+            role: 'assistant',
+            content: 'Analyzing incident data...'
+        });
+        this._updateView();
+
+        const llmService = await LLMService.getInstance();
+        
+        // Get Prometheus alerts if available
+        let alerts: Alert[] = [];
+        let contextMetrics: string[] = [];
+        let relatedMetrics: Record<string, MetricValue> = {};
+
+        if (node.prometheusConfig) {
+            try {
+                const prometheusClient = new PrometheusClient(node.prometheusConfig);
+                alerts = await prometheusClient.getAlerts();
+                
+                // Get context metrics for active alerts
+                if (alerts.length > 0) {
+                    contextMetrics = await prometheusClient.getMetricNames();
+                    const now = Math.floor(Date.now() / 1000);
+                    const timeRange = 3600; // 1 hour of context
+                    
+                    for (const alert of alerts) {
+                        try {
+                            const result = await prometheusClient.queryRange(
+                                alert.labels.alertname,
+                                now - timeRange,
+                                now,
+                                '15s'
+                            );
+                            if (result.length > 0) {
+                                relatedMetrics[alert.labels.alertname] = result[0];
+                            }
+                        } catch (error) {
+                            console.error(`Failed to fetch metric for alert ${alert.name}:`, error);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch Prometheus data:', error);
+            }
+        }
+
+        // Format the incident analysis prompt
+        const incidentAnalysisPrompt = `
+            I need help investigating potential incidents on server ${node.label} (${node.host}):
+            
+            System Metrics:
+            - CPU Usage: ${metrics.cpu.toFixed(1)}%
+            - Memory Usage: ${(metrics.memory.used / 1024).toFixed(1)}GB / ${(metrics.memory.total / 1024).toFixed(1)}GB (${((metrics.memory.used / metrics.memory.total) * 100).toFixed(1)}%)
+            - Disk Usage: ${metrics.disk.used}GB / ${metrics.disk.total}GB (${((metrics.disk.used / metrics.disk.total) * 100).toFixed(1)}%)
+            - System Uptime: ${(metrics.uptime / 3600).toFixed(1)} hours
+            - Load Average (1m, 5m, 15m): ${metrics.loadAverage.map((v: number) => v.toFixed(2)).join(', ')}
+            
+            ${metrics.prometheusMetrics ? `
+            Prometheus Metrics:
+            ${Object.entries(metrics.prometheusMetrics)
+                .map(([key, value]) => `- ${key}: ${typeof value === 'number' ? value.toFixed(2) : value}`)
+                .join('\n')}
+            ` : ''}
+
+            ${alerts.length > 0 ? `
+            Active Alerts:
+            ${alerts.map(alert => `
+                Name: ${alert.name}
+                Severity: ${alert.labels?.severity}
+                Description: ${alert.annotations?.description || alert.annotations?.message || 'No description'}
+                Started: ${alert.activeAt}
+                Value: ${alert.value}
+                Labels: ${Object.entries(alert.labels)
+                    .map(([key, value]) => `${key}="${value}"`)
+                    .join(', ')}
+            `).join('\n')}
+            ` : 'No active alerts.'}
+            
+            Please provide a comprehensive incident analysis including:
+            1. Incident Detection - Are there any active or potential incidents?
+            2. Severity Assessment - How severe are the identified issues?
+            3. Root Cause Analysis - What might be causing these issues?
+            4. Impact Analysis - What systems and users are affected?
+            5. Correlation Analysis - How do the metrics and alerts correlate?
+            6. Immediate Actions - What should be done right now?
+            7. Investigation Steps - What additional information should we gather?
+            8. Prevention Recommendations - How can we prevent similar incidents?
+        `;
+
+        try {
+            const analysis = await llmService.analyze(incidentAnalysisPrompt);
+            // Replace the loading message with the actual analysis
+            this._messages[loadingMessageIndex] = {
+                role: 'assistant',
+                content: analysis
+            };
+            this._updateView();
+            
+            // Ensure the view is visible and focused after the analysis
+            this._view.show(true);
+        } catch (error) {
+            // Replace loading message with error
+            this._messages[loadingMessageIndex] = {
+                role: 'assistant',
+                content: 'Failed to analyze incident. Please try again.'
+            };
+            this._updateView();
+            
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to analyze incident: ${error.message}`);
+            }
+        }
+    }
+
+    public async analyzeRemediation(node: ServerNode, metrics: ServerMetrics) {
+        if (!this._view) {
+            return;
+        }
+
+        // Make sure the view is revealed
+        this._view.show(true);
+
+        // Add the initial system message
+        this._messages.push({
+            role: 'system',
+            content: `Remediation Analysis for ${node.label}`
+        });
+
+        // Add a temporary loading message
+        const loadingMessageIndex = this._messages.length;
+        this._messages.push({
+            role: 'assistant',
+            content: 'Analyzing remediation options...'
+        });
+        this._updateView();
+
+        const llmService = await LLMService.getInstance();
+        
+        // Get Prometheus alerts if available
+        let alerts: Alert[] = [];
+        let contextMetrics: string[] = [];
+        let relatedMetrics: Record<string, MetricValue> = {};
+
+        if (node.prometheusConfig) {
+            try {
+                const prometheusClient = new PrometheusClient(node.prometheusConfig);
+                alerts = await prometheusClient.getAlerts();
+                
+                // Get context metrics for active alerts
+                if (alerts.length > 0) {
+                    contextMetrics = await prometheusClient.getMetricNames();
+                    const now = Math.floor(Date.now() / 1000);
+                    const timeRange = 3600; // 1 hour of context
+                    
+                    for (const alert of alerts) {
+                        try {
+                            const result = await prometheusClient.queryRange(
+                                alert.labels.alertname,
+                                now - timeRange,
+                                now,
+                                '15s'
+                            );
+                            if (result.length > 0) {
+                                relatedMetrics[alert.labels.alertname] = result[0];
+                            }
+                        } catch (error) {
+                            console.error(`Failed to fetch metric for alert ${alert.name}:`, error);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch Prometheus data:', error);
+            }
+        }
+
+        // Format the remediation analysis prompt
+        const remediationAnalysisPrompt = `
+            I need help determining remediation steps for server ${node.label} (${node.host}):
+            
+            System Metrics:
+            - CPU Usage: ${metrics.cpu.toFixed(1)}%
+            - Memory Usage: ${(metrics.memory.used / 1024).toFixed(1)}GB / ${(metrics.memory.total / 1024).toFixed(1)}GB (${((metrics.memory.used / metrics.memory.total) * 100).toFixed(1)}%)
+            - Disk Usage: ${metrics.disk.used}GB / ${metrics.disk.total}GB (${((metrics.disk.used / metrics.disk.total) * 100).toFixed(1)}%)
+            - System Uptime: ${(metrics.uptime / 3600).toFixed(1)} hours
+            - Load Average (1m, 5m, 15m): ${metrics.loadAverage.map((v: number) => v.toFixed(2)).join(', ')}
+            
+            ${metrics.prometheusMetrics ? `
+            Prometheus Metrics:
+            ${Object.entries(metrics.prometheusMetrics)
+                .map(([key, value]) => `- ${key}: ${typeof value === 'number' ? value.toFixed(2) : value}`)
+                .join('\n')}
+            ` : ''}
+
+            ${alerts.length > 0 ? `
+            Active Alerts:
+            ${alerts.map(alert => `
+                Name: ${alert.name}
+                Severity: ${alert.labels?.severity}
+                Description: ${alert.annotations?.description || alert.annotations?.message || 'No description'}
+                Started: ${alert.activeAt}
+                Value: ${alert.value}
+                Labels: ${Object.entries(alert.labels)
+                    .map(([key, value]) => `${key}="${value}"`)
+                    .join(', ')}
+            `).join('\n')}
+            ` : 'No active alerts.'}
+            
+            Please provide a comprehensive remediation analysis including:
+            1. Issue Summary - What are the current issues that need remediation?
+            2. Priority Assessment - Which issues should be addressed first?
+            3. Immediate Actions - What steps should be taken right now?
+            4. Resource Requirements - What resources are needed for remediation?
+            5. Risk Assessment - What are the risks associated with each remediation step?
+            6. Implementation Plan - Step-by-step remediation instructions
+            7. Verification Steps - How to verify the remediation was successful?
+            8. Future Prevention - Long-term recommendations to prevent recurrence
+        `;
+
+        try {
+            const analysis = await llmService.analyze(remediationAnalysisPrompt);
+            // Replace the loading message with the actual analysis
+            this._messages[loadingMessageIndex] = {
+                role: 'assistant',
+                content: analysis
+            };
+            this._updateView();
+            
+            // Ensure the view is visible and focused after the analysis
+            this._view.show(true);
+        } catch (error) {
+            // Replace loading message with error
+            this._messages[loadingMessageIndex] = {
+                role: 'assistant',
+                content: 'Failed to analyze remediation options. Please try again.'
+            };
+            this._updateView();
+            
+            if (error instanceof Error) {
+                vscode.window.showErrorMessage(`Failed to analyze remediation options: ${error.message}`);
             }
         }
     }

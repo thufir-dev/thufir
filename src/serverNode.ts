@@ -2,9 +2,14 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { PrometheusConfig } from './types';
 
+export interface LogConfig {
+    paths: string[];
+}
+
 export class ServerNode extends vscode.TreeItem {
     private _isConnected: boolean = false;
     private _prometheusConfig?: PrometheusConfig;
+    private _logConfig?: LogConfig;
     private _isLocalOnly: boolean = false;
 
     constructor(
@@ -12,14 +17,16 @@ export class ServerNode extends vscode.TreeItem {
         public readonly host: string,
         public readonly username: string,
         public readonly port: number = 22,
+        isLocalOnly: boolean = false,
         prometheusConfig?: PrometheusConfig,
-        isLocalOnly: boolean = false
+        logConfig?: LogConfig
     ) {
         super(
             label,
             vscode.TreeItemCollapsibleState.None
         );
         this._prometheusConfig = prometheusConfig;
+        this._logConfig = logConfig;
         this._isLocalOnly = isLocalOnly;
         if (isLocalOnly) {
             this._isConnected = true; // Local connections are always considered connected
@@ -47,6 +54,15 @@ export class ServerNode extends vscode.TreeItem {
         this.updateProperties();
     }
 
+    get logConfig(): LogConfig | undefined {
+        return this._logConfig;
+    }
+
+    set logConfig(config: LogConfig | undefined) {
+        this._logConfig = config;
+        this.updateProperties();
+    }
+
     get isLocalOnly(): boolean {
         return this._isLocalOnly;
     }
@@ -57,7 +73,11 @@ export class ServerNode extends vscode.TreeItem {
             this.description = 'Local';
             this.contextValue = 'localPrometheus';
         } else {
-            this.tooltip = `${this.username}@${this.host}:${this.port}${this._prometheusConfig ? '\nPrometheus enabled' : ''}`;
+            const features = [];
+            if (this._prometheusConfig) features.push('Prometheus enabled');
+            if (this._logConfig) features.push('Logs configured');
+            
+            this.tooltip = `${this.username}@${this.host}:${this.port}${features.length ? '\n' + features.join('\n') : ''}`;
             this.description = this._isConnected ? 'Connected' : 'Disconnected';
             this.contextValue = this._isConnected ? 'connectedServer' : 'disconnectedServer';
         }

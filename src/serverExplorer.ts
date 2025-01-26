@@ -1,9 +1,20 @@
 import * as vscode from 'vscode';
 import * as ssh2 from 'ssh2';
-import { ServerNode } from './serverNode';
+import { ServerNode, LogConfig } from './serverNode';
 import { ServerMetricsProvider } from './serverMetricsProvider';
 import { PrometheusClient } from './prometheusClient';
 import { PrometheusDashboard } from './prometheusDashboard';
+import { PrometheusConfig } from './types';
+
+interface SavedServer {
+    label: string;
+    host: string;
+    username: string;
+    port?: number;
+    prometheusConfig?: PrometheusConfig;
+    logConfig?: LogConfig;
+    isLocalOnly?: boolean;
+}
 
 export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNode> {
     private _onDidChangeTreeData: vscode.EventEmitter<ServerNode | undefined | null | void> = new vscode.EventEmitter<ServerNode | undefined | null | void>();
@@ -34,30 +45,37 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
     }
 
     private loadServers() {
-        const savedServers = this.context.globalState.get<any[]>('servers') || [];
+        const savedServers = this.context.globalState.get<SavedServer[]>('servers') || [];
         this.servers = savedServers.map(s => new ServerNode(
             s.label, 
             s.host, 
             s.username, 
             s.port || 22,
+            s.isLocalOnly || false,
             s.prometheusConfig,
-            s.isLocalOnly || false
+            s.logConfig
         ));
     }
 
-    private saveServers() {
-        this.context.globalState.update('servers', this.servers.map(s => ({
+    public async saveServers() {
+        const serversToSave: SavedServer[] = this.servers.map(s => ({
             label: s.label,
             host: s.host,
             username: s.username,
             port: s.port,
             prometheusConfig: s.prometheusConfig,
+            logConfig: s.logConfig,
             isLocalOnly: s.isLocalOnly
-        })));
+        }));
+        await this.context.globalState.update('servers', serversToSave);
     }
 
-    private getServerKey(node: ServerNode): string {
+    public getServerKey(node: ServerNode): string {
         return `${node.username}@${node.host}:${node.port}`;
+    }
+
+    public getConnection(serverKey: string): ssh2.Client | undefined {
+        return this.connections.get(serverKey);
     }
 
     getTreeItem(element: ServerNode): vscode.TreeItem {
@@ -71,7 +89,7 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
         return Promise.resolve(this.servers);
     }
 
-    async addServer() {
+    public async addServer() {
         const label = await vscode.window.showInputBox({
             placeHolder: 'Enter a name for the server'
         });
@@ -166,7 +184,7 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
                 });
             });
 
-            const server = new ServerNode(label, host, username, port, prometheusConfig);
+            const server = new ServerNode(label, host, username, port, false, prometheusConfig);
             this.servers.push(server);
             this.saveServers();
 
@@ -347,7 +365,7 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
         vscode.window.showInformationMessage(`Successfully ${action.toLowerCase()}d Prometheus for ${node.label}`);
     }
 
-    async addLocalPrometheus() {
+    public async addLocalPrometheus() {
         const label = await vscode.window.showInputBox({
             placeHolder: 'Enter a name for this Prometheus connection'
         });
@@ -395,8 +413,8 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
             'localhost',
             'local',
             9090,
-            prometheusConfig,
-            true // isLocalOnly
+            true, // isLocalOnly
+            prometheusConfig
         );
 
         this.servers.push(server);

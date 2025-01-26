@@ -10,6 +10,8 @@ import { SREAgentView } from './sreAgentView';
 import { ChatView } from './chatView';
 import { PrometheusClient } from './prometheusClient';
 import { Alert, MetricValue } from './types';
+import { LogManager } from './logManager';
+import { LogViewPanel } from './logViewPanel';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -142,6 +144,70 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 		}),
 
+		vscode.commands.registerCommand('thufir.analyzeIncident', async (node: ServerNode) => {
+			try {
+				// Get server metrics if available
+				const metrics = metricsProvider.getMetrics(node);
+				
+				// If no server metrics but Prometheus is configured, we can still proceed
+				if (!metrics && !node.prometheusConfig) {
+					vscode.window.showErrorMessage('No metrics or Prometheus data available for this server');
+					return;
+				}
+
+				// First reveal the AI Assistant panel
+				await vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
+				
+				// Then focus specifically on the chat view within the panel
+				await vscode.commands.executeCommand('chat.focus');
+
+				// Send to chat for incident analysis
+				chatProvider.analyzeIncident(node, metrics || {
+					cpu: 0,
+					memory: { used: 0, total: 0 },
+					disk: { used: 0, total: 0 },
+					uptime: 0,
+					loadAverage: [0, 0, 0]
+				});
+			} catch (error) {
+				if (error instanceof Error) {
+					vscode.window.showErrorMessage(`Failed to analyze incident: ${error.message}`);
+				}
+			}
+		}),
+
+		vscode.commands.registerCommand('thufir.analyzeRemediation', async (node: ServerNode) => {
+			try {
+				// Get server metrics if available
+				const metrics = metricsProvider.getMetrics(node);
+				
+				// If no server metrics but Prometheus is configured, we can still proceed
+				if (!metrics && !node.prometheusConfig) {
+					vscode.window.showErrorMessage('No metrics or Prometheus data available for this server');
+					return;
+				}
+
+				// First reveal the AI Assistant panel
+				await vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
+				
+				// Then focus specifically on the chat view within the panel
+				await vscode.commands.executeCommand('chat.focus');
+
+				// Send to chat for remediation analysis
+				chatProvider.analyzeRemediation(node, metrics || {
+					cpu: 0,
+					memory: { used: 0, total: 0 },
+					disk: { used: 0, total: 0 },
+					uptime: 0,
+					loadAverage: [0, 0, 0]
+				});
+			} catch (error) {
+				if (error instanceof Error) {
+					vscode.window.showErrorMessage(`Failed to analyze remediation: ${error.message}`);
+				}
+			}
+		}),
+
 		vscode.commands.registerCommand('chat.focus', () => {
 			// Focus on the chat view
 			vscode.commands.executeCommand('workbench.view.extension.ai-assistant');
@@ -153,6 +219,68 @@ export function activate(context: vscode.ExtensionContext) {
 			if (views.length > 0) {
 				vscode.window.showTextDocument(views[0].document, views[0].viewColumn, true);
 			}
+		}),
+
+		vscode.commands.registerCommand('serverExplorer.viewLogs', async (node: ServerNode) => {
+			if (!node.isConnected) {
+				vscode.window.showErrorMessage('Please connect to the server first');
+				return;
+			}
+
+			if (!node.logConfig) {
+				const configure = await vscode.window.showInformationMessage(
+					'Log sources are not configured for this server. Would you like to configure them now?',
+					'Configure', 'Cancel'
+				);
+				
+				if (configure === 'Configure') {
+					vscode.commands.executeCommand('serverExplorer.configureLogs', node);
+				}
+				return;
+			}
+
+			LogViewPanel.createOrShow(node);
+		}),
+
+		vscode.commands.registerCommand('serverExplorer.configureLogs', async (node: ServerNode) => {
+			if (!node.isConnected) {
+				vscode.window.showErrorMessage('Please connect to the server first');
+				return;
+			}
+
+			const defaultPaths = vscode.workspace.getConfiguration('thufir.logs').get<string[]>('defaultPaths') || [];
+			const currentPaths = node.logConfig?.paths || [];
+
+			const logPaths = await vscode.window.showInputBox({
+				prompt: 'Enter log file paths (comma-separated)',
+				value: currentPaths.length > 0 ? currentPaths.join(',') : defaultPaths.join(','),
+				validateInput: value => {
+					if (!value.trim()) {
+						return 'Please enter at least one log file path';
+					}
+					return null;
+				}
+			});
+
+			if (!logPaths) {
+				return;
+			}
+
+			const paths = logPaths.split(',').map(p => p.trim()).filter(p => p);
+			node.logConfig = { paths };
+
+			// Save the server configuration
+			await serverExplorerProvider.saveServers();
+
+			// Start log collection if the server is connected
+			const serverKey = serverExplorerProvider.getServerKey(node);
+			const connection = serverExplorerProvider.getConnection(serverKey);
+			if (connection) {
+				const logManager = LogManager.getInstance();
+				await logManager.startLogCollection(connection, node, paths);
+			}
+
+			vscode.window.showInformationMessage(`Log sources configured for ${node.label}`);
 		})
 	);
 
