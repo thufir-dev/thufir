@@ -12,6 +12,7 @@ import { PrometheusClient } from './prometheusClient';
 import { Alert, MetricValue } from './types';
 import { LogManager } from './logManager';
 import { LogViewPanel } from './logViewPanel';
+import { GitService } from './gitService';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -65,6 +66,18 @@ export function activate(context: vscode.ExtensionContext) {
 			} catch (error) {
 				if (error instanceof Error) {
 					vscode.window.showErrorMessage(`Failed to configure AI provider: ${error.message}`);
+				}
+			}
+		}),
+
+		vscode.commands.registerCommand('thufir.configureGitRepository', async () => {
+			try {
+				const gitService = GitService.getInstance();
+				await gitService.configureRepository();
+				vscode.window.showInformationMessage('Git repository configured successfully');
+			} catch (error) {
+				if (error instanceof Error) {
+					vscode.window.showErrorMessage(`Failed to configure Git repository: ${error.message}`);
 				}
 			}
 		}),

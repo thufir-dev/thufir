@@ -140,6 +140,11 @@
         "command": "chat.focus",
         "title": "Focus Chat",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "thufir.configureGitRepository",
+        "title": "Configure Git Repository",
+        "icon": "$(git-branch)"
       }
     ],
     "menus": {
@@ -168,6 +173,11 @@
           "command": "thufir.configureLLM",
           "when": "view == chat",
           "group": "navigation@2"
+        },
+        {
+          "command": "thufir.configureGitRepository",
+          "when": "view == chat",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -244,6 +254,10 @@
             "/var/log/messages"
           ],
           "description": "Default log file paths to monitor"
+        },
+        "thufir.git.repositoryPath": {
+          "type": "string",
+          "description": "Path to the Git repository for incident analysis"
         }
       }
     },

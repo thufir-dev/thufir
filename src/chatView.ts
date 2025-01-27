@@ -4,6 +4,7 @@ import { ServerNode } from './serverNode';
 import { Alert, MetricValue } from './types';
 import { ServerMetrics } from './serverMetricsProvider';
 import { PrometheusClient } from './prometheusClient';
+import { GitService } from './gitService';
 
 interface Message {
     role: 'user' | 'assistant' | 'system';
@@ -335,11 +336,31 @@ export class ChatView implements vscode.WebviewViewProvider {
 
         const llmService = await LLMService.getInstance();
         
-        // Get Prometheus alerts if available
         let alerts: Alert[] = [];
         let contextMetrics: string[] = [];
         let relatedMetrics: Record<string, MetricValue> = {};
+        let gitAnalysis = '';
 
+        // Get Git analysis if available
+        try {
+            const gitService = GitService.getInstance();
+            const { commits, suspiciousCommits } = await gitService.analyzeRecentCommits();
+            
+            if (suspiciousCommits.length > 0) {
+                gitAnalysis = `\nRecent Suspicious Git Activity:\n`;
+                for (const { commit, patterns } of suspiciousCommits) {
+                    gitAnalysis += `\nCommit ${commit.hash.substring(0, 8)} by ${commit.author} at ${commit.date.toISOString()}:
+- Message: ${commit.message}
+- Suspicious Patterns:
+${patterns.map(p => `  * ${p.description} (Severity: ${p.severity})`).join('\n')}`;
+                }
+                gitAnalysis += '\n\nPlease analyze if these changes might be related to the current incident.';
+            }
+        } catch (error) {
+            console.error('Failed to analyze Git history:', error);
+        }
+
+        // Get Prometheus data if available
         if (node.prometheusConfig) {
             try {
                 const prometheusClient = new PrometheusClient(node.prometheusConfig);
@@ -404,16 +425,16 @@ export class ChatView implements vscode.WebviewViewProvider {
             `).join('\n')}
             ` : 'No active alerts.'}
             
-            Please provide a comprehensive incident analysis including:
-            1. Incident Detection - Are there any active or potential incidents?
-            2. Severity Assessment - How severe are the identified issues?
-            3. Root Cause Analysis - What might be causing these issues?
-            4. Impact Analysis - What systems and users are affected?
-            5. Correlation Analysis - How do the metrics and alerts correlate?
-            6. Immediate Actions - What should be done right now?
-            7. Investigation Steps - What additional information should we gather?
-            8. Prevention Recommendations - How can we prevent similar incidents?
-        `;
+            ${gitAnalysis}
+
+            Please analyze this incident and provide:
+            1. Potential root causes
+            2. Impact assessment
+            3. Immediate remediation steps
+            4. Long-term recommendations
+            5. Prevention strategies for the future`;
+
+        this._messages.push({ role: 'user', content: incidentAnalysisPrompt });
 
         try {
             const analysis = await llmService.analyze(incidentAnalysisPrompt);
