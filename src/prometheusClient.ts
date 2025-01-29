@@ -1,4 +1,6 @@
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
+import * as fs from 'fs';
+import * as https from 'https';
 import { Alert, PrometheusConfig, MetricValue } from './types';
 
 export interface PrometheusQueryResult {
@@ -23,14 +25,35 @@ interface RawPrometheusAlert {
 
 export class PrometheusClient {
     private baseUrl: string;
+    private client: AxiosInstance;
 
     constructor(config: PrometheusConfig) {
         this.baseUrl = `${config.url}:${config.port}`;
+
+        let httpsAgent;
+        if (config.tls) {
+            const cert = fs.readFileSync(config.tls.cert);
+            const key = fs.readFileSync(config.tls.key);
+            const ca = config.tls.ca ? fs.readFileSync(config.tls.ca) : undefined;
+
+            httpsAgent = new https.Agent({
+                cert,
+                key,
+                ca,
+                rejectUnauthorized: true
+            });
+        }
+
+        this.client = axios.create({
+            baseURL: this.baseUrl,
+            httpsAgent,
+            validateStatus: (status) => status >= 200 && status < 300
+        });
     }
 
     async queryInstant(query: string): Promise<PrometheusQueryResult[]> {
         try {
-            const response = await axios.get(`${this.baseUrl}/api/v1/query`, {
+            const response = await this.client.get('/api/v1/query', {
                 params: {
                     query: query
                 }
@@ -48,7 +71,7 @@ export class PrometheusClient {
 
     async queryRange(query: string, start: number, end: number, step: string): Promise<MetricValue[]> {
         try {
-            const response = await axios.get(`${this.baseUrl}/api/v1/query_range`, {
+            const response = await this.client.get('/api/v1/query_range', {
                 params: {
                     query: query,
                     start: start,
@@ -69,7 +92,7 @@ export class PrometheusClient {
 
     async getMetricNames(): Promise<string[]> {
         try {
-            const response = await axios.get(`${this.baseUrl}/api/v1/label/__name__/values`);
+            const response = await this.client.get('/api/v1/label/__name__/values');
             if (response.data.status === 'success') {
                 return response.data.data;
             }
@@ -82,7 +105,7 @@ export class PrometheusClient {
 
     async getAlerts(): Promise<Alert[]> {
         try {
-            const response = await axios.get(`${this.baseUrl}/api/v1/alerts`);
+            const response = await this.client.get('/api/v1/alerts');
             if (response.data.status === 'success') {
                 return response.data.data.alerts
                     .filter((alert: RawPrometheusAlert) => alert.state === 'firing')
@@ -104,7 +127,7 @@ export class PrometheusClient {
 
     async getRules(): Promise<any[]> {
         try {
-            const response = await axios.get(`${this.baseUrl}/api/v1/rules`);
+            const response = await this.client.get('/api/v1/rules');
             if (response.data.status === 'success') {
                 return response.data.data.groups;
             }

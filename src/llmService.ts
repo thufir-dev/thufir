@@ -1,11 +1,6 @@
 import * as vscode from 'vscode';
 import axios from 'axios';
-
-export interface LLMConfig {
-    provider: 'openai' | 'anthropic' | 'google';
-    apiKey: string;
-    model?: string;
-}
+import { LLMConfig, ModelConfig } from './types';
 
 export class LLMService {
     private static instance: LLMService;
@@ -27,9 +22,10 @@ export class LLMService {
         const provider = config.get<'openai' | 'anthropic' | 'google'>('provider');
         const apiKey = config.get<string>('apiKey');
         const model = config.get<string>('model');
+        const customModels = config.get<ModelConfig[]>('customModels') || [];
 
         if (provider && apiKey) {
-            this.config = { provider, apiKey, model };
+            this.config = { provider, apiKey, model, customModels };
         }
     }
 
@@ -57,33 +53,76 @@ export class LLMService {
         }
 
         let model: string | undefined;
-        if (provider === 'openai') {
+        const customModels = await this.getCustomModels(provider);
+        
+        const modelType = await vscode.window.showQuickPick(
+            ['Default Models', 'Custom Model'],
+            {
+                placeHolder: 'Select model type',
+                ignoreFocusOut: true
+            }
+        );
+
+        if (modelType === 'Default Models') {
+            const defaultModels = this.getDefaultModels(provider);
             model = await vscode.window.showQuickPick(
-                ['gpt-4', 'gpt-3.5-turbo'],
+                defaultModels,
                 { 
                     placeHolder: 'Select model',
                     ignoreFocusOut: true
                 }
-            ) || 'gpt-3.5-turbo';
-        } else if (provider === 'anthropic') {
-            model = await vscode.window.showQuickPick(
-                ['claude-3-opus-20240229', 'claude-3-sonnet-20240229'],
-                { 
-                    placeHolder: 'Select model',
+            ) || defaultModels[0];
+        } else if (modelType === 'Custom Model') {
+            const existingModels = customModels.map(m => m.name);
+            const modelAction = await vscode.window.showQuickPick(
+                [...existingModels, '+ Add New Model'],
+                {
+                    placeHolder: 'Select or add custom model',
                     ignoreFocusOut: true
                 }
-            ) || 'claude-3-sonnet-20240229';
+            );
+
+            if (modelAction === '+ Add New Model') {
+                const newModel = await vscode.window.showInputBox({
+                    prompt: 'Enter the model name',
+                    ignoreFocusOut: true
+                });
+
+                if (newModel) {
+                    customModels.push({ name: newModel, isCustom: true });
+                    model = newModel;
+                }
+            } else {
+                model = modelAction;
+            }
         }
 
         // Save the configuration
         const config = vscode.workspace.getConfiguration('thufir.llm');
         await config.update('provider', provider, true);
         await config.update('apiKey', apiKey, true);
-        if (model) {
-            await config.update('model', model, true);
-        }
+        await config.update('model', model, true);
+        await config.update('customModels', customModels, true);
 
-        this.config = { provider, apiKey, model };
+        this.config = { provider, apiKey, model, customModels };
+    }
+
+    private getDefaultModels(provider: string): string[] {
+        switch (provider) {
+            case 'openai':
+                return ['gpt-4', 'gpt-3.5-turbo'];
+            case 'anthropic':
+                return ['claude-3-opus-20240229', 'claude-3-sonnet-20240229'];
+            case 'google':
+                return ['gemini-pro'];
+            default:
+                return [];
+        }
+    }
+
+    private async getCustomModels(provider: string): Promise<ModelConfig[]> {
+        const config = vscode.workspace.getConfiguration('thufir.llm');
+        return config.get<ModelConfig[]>('customModels') || [];
     }
 
     private async ensureConfig(): Promise<void> {
@@ -111,7 +150,6 @@ export class LLMService {
                     throw new Error('Unsupported LLM provider');
             }
         } catch (error) {
-            // If there's a configuration error, clear the config and rethrow
             if (error instanceof Error && 
                 (error.message.includes('API key') || 
                  error.message.includes('provider') || 
@@ -202,4 +240,4 @@ export class LLMService {
 
         return response.data.candidates[0].content.parts[0].text;
     }
-} 
+}

@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import * as ssh2 from 'ssh2';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ServerNode, LogConfig } from './serverNode';
 import { ServerMetricsProvider } from './serverMetricsProvider';
 import { PrometheusClient } from './prometheusClient';
 import { PrometheusDashboard } from './prometheusDashboard';
-import { PrometheusConfig } from './types';
+import { PrometheusConfig, SSHConfig, SSHAuthConfig } from './types';
 
 interface SavedServer {
     label: string;
@@ -14,6 +16,7 @@ interface SavedServer {
     prometheusConfig?: PrometheusConfig;
     logConfig?: LogConfig;
     isLocalOnly?: boolean;
+    sshConfig?: SSHConfig;
 }
 
 export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNode> {
@@ -53,7 +56,8 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
             s.port || 22,
             s.isLocalOnly || false,
             s.prometheusConfig,
-            s.logConfig
+            s.logConfig,
+            s.sshConfig
         ));
     }
 
@@ -65,7 +69,8 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
             port: s.port,
             prometheusConfig: s.prometheusConfig,
             logConfig: s.logConfig,
-            isLocalOnly: s.isLocalOnly
+            isLocalOnly: s.isLocalOnly,
+            sshConfig: s.sshConfig
         }));
         await this.context.globalState.update('servers', serversToSave);
     }
@@ -117,11 +122,81 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
             return;
         }
 
-        const password = await vscode.window.showInputBox({
-            prompt: `Enter password for ${username}@${host}:${port}`,
-            password: true
-        });
-        if (!password) return;
+        // Ask for authentication method
+        const authMethod = await vscode.window.showQuickPick(
+            ['Password', 'Private Key'],
+            { placeHolder: 'Select authentication method' }
+        );
+        if (!authMethod) return;
+
+        let sshConfig: SSHConfig;
+
+        if (authMethod === 'Password') {
+            const password = await vscode.window.showInputBox({
+                prompt: `Enter password for ${username}@${host}:${port}`,
+                password: true
+            });
+            if (!password) return;
+
+            sshConfig = {
+                host,
+                port,
+                username,
+                auth: {
+                    type: 'password',
+                    password
+                },
+                readyTimeout: 10000
+            };
+        } else {
+            // Get private key file
+            const homeDir = process.env.HOME || process.env.USERPROFILE;
+            const defaultSshPath = homeDir ? path.join(homeDir, '.ssh') : undefined;
+            
+            const keyFiles = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: false,
+                canSelectMany: false,
+                defaultUri: defaultSshPath ? vscode.Uri.file(defaultSshPath) : undefined,
+                filters: {
+                    'SSH Keys': ['pem', 'key', 'pub', 'ppk']
+                },
+                title: 'Select SSH Private Key'
+            });
+            if (!keyFiles || keyFiles.length === 0) return;
+
+            const keyPath = keyFiles[0].fsPath;
+
+            // Ask for passphrase if needed
+            const hasPassphrase = await vscode.window.showQuickPick(
+                ['Yes', 'No'],
+                { placeHolder: 'Does your private key have a passphrase?' }
+            );
+            if (!hasPassphrase) return;
+
+            let passphrase: string | undefined;
+            if (hasPassphrase === 'Yes') {
+                passphrase = await vscode.window.showInputBox({
+                    prompt: 'Enter private key passphrase',
+                    password: true
+                });
+                if (!passphrase) return;
+            }
+
+            sshConfig = {
+                host,
+                port,
+                username,
+                auth: {
+                    type: 'privateKey',
+                    privateKey: {
+                        path: keyPath,
+                        passphrase
+                    }
+                },
+                readyTimeout: 10000
+            };
+        }
 
         // Ask if user wants to configure Prometheus
         const configurePrometheus = await vscode.window.showQuickPick(['Yes', 'No'], {
@@ -130,28 +205,8 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
 
         let prometheusConfig;
         if (configurePrometheus === 'Yes') {
-            const prometheusUrl = await vscode.window.showInputBox({
-                placeHolder: 'Enter Prometheus URL (e.g., http://localhost)',
-                value: 'http://localhost'
-            });
-            if (!prometheusUrl) return;
-
-            const prometheusPortInput = await vscode.window.showInputBox({
-                placeHolder: 'Enter Prometheus port (default: 9090)',
-                value: '9090'
-            });
-            if (!prometheusPortInput) return;
-
-            const prometheusPort = parseInt(prometheusPortInput);
-            if (isNaN(prometheusPort) || prometheusPort < 1 || prometheusPort > 65535) {
-                vscode.window.showErrorMessage('Invalid Prometheus port number. Please enter a number between 1 and 65535.');
-                return;
-            }
-
-            prometheusConfig = {
-                url: prometheusUrl,
-                port: prometheusPort
-            };
+            prometheusConfig = await this.configurePrometheusSettings();
+            if (!prometheusConfig) return;
         }
 
         try {
@@ -174,17 +229,42 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
                     reject(new Error(errorMessage));
                 });
 
-                conn.connect({
-                    host: host,
-                    port: port,
-                    username: username,
-                    password: password,
-                    readyTimeout: 10000,
-                    debug: (msg) => console.log(msg)
-                });
+                const connectConfig: ssh2.ConnectConfig = {
+                    host: sshConfig.host,
+                    port: sshConfig.port,
+                    username: sshConfig.username,
+                    readyTimeout: sshConfig.readyTimeout
+                };
+
+                if (sshConfig.auth.type === 'password') {
+                    connectConfig.password = sshConfig.auth.password;
+                } else {
+                    try {
+                        const privateKey = fs.readFileSync(sshConfig.auth.privateKey!.path);
+                        connectConfig.privateKey = privateKey;
+                        if (sshConfig.auth.privateKey!.passphrase) {
+                            connectConfig.passphrase = sshConfig.auth.privateKey!.passphrase;
+                        }
+                    } catch (error) {
+                        reject(new Error('Failed to read private key file'));
+                        return;
+                    }
+                }
+
+                conn.connect(connectConfig);
             });
 
-            const server = new ServerNode(label, host, username, port, false, prometheusConfig);
+            const server = new ServerNode(
+                label, 
+                host, 
+                username, 
+                port, 
+                false, 
+                prometheusConfig,
+                undefined,
+                sshConfig
+            );
+            
             this.servers.push(server);
             this.saveServers();
 
@@ -203,6 +283,91 @@ export class ServerExplorerProvider implements vscode.TreeDataProvider<ServerNod
             vscode.window.showErrorMessage(`Failed to connect: ${errorMessage}`);
             console.error('Connection error:', error);
         }
+    }
+
+    private async configurePrometheusSettings(): Promise<PrometheusConfig | undefined> {
+        const prometheusUrl = await vscode.window.showInputBox({
+            placeHolder: 'Enter Prometheus URL (e.g., http://localhost)',
+            value: 'http://localhost'
+        });
+        if (!prometheusUrl) return;
+
+        const prometheusPortInput = await vscode.window.showInputBox({
+            placeHolder: 'Enter Prometheus port (default: 9090)',
+            value: '9090'
+        });
+        if (!prometheusPortInput) return;
+
+        const prometheusPort = parseInt(prometheusPortInput);
+        if (isNaN(prometheusPort) || prometheusPort < 1 || prometheusPort > 65535) {
+            vscode.window.showErrorMessage('Invalid Prometheus port number. Please enter a number between 1 and 65535.');
+            return;
+        }
+
+        // Ask if TLS should be configured
+        const configureTLS = await vscode.window.showQuickPick(['Yes', 'No'], {
+            placeHolder: 'Do you want to configure TLS for Prometheus?'
+        });
+
+        let tlsConfig;
+        if (configureTLS === 'Yes') {
+            // Get certificate file
+            const certFiles = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: false,
+                canSelectMany: false,
+                filters: {
+                    'Certificates': ['crt', 'pem']
+                },
+                title: 'Select TLS Certificate'
+            });
+            if (!certFiles) return;
+
+            // Get key file
+            const keyFiles = await vscode.window.showOpenDialog({
+                canSelectFiles: true,
+                canSelectFolders: false,
+                canSelectMany: false,
+                filters: {
+                    'Key Files': ['key', 'pem']
+                },
+                title: 'Select TLS Key'
+            });
+            if (!keyFiles) return;
+
+            // Optionally get CA certificate
+            const includeCA = await vscode.window.showQuickPick(['Yes', 'No'], {
+                placeHolder: 'Do you want to include a CA certificate?'
+            });
+
+            let caPath;
+            if (includeCA === 'Yes') {
+                const caFiles = await vscode.window.showOpenDialog({
+                    canSelectFiles: true,
+                    canSelectFolders: false,
+                    canSelectMany: false,
+                    filters: {
+                        'CA Certificates': ['crt', 'pem']
+                    },
+                    title: 'Select CA Certificate'
+                });
+                if (caFiles) {
+                    caPath = caFiles[0].fsPath;
+                }
+            }
+
+            tlsConfig = {
+                cert: certFiles[0].fsPath,
+                key: keyFiles[0].fsPath,
+                ca: caPath
+            };
+        }
+
+        return {
+            url: prometheusUrl,
+            port: prometheusPort,
+            tls: tlsConfig
+        };
     }
 
     async connectToServer(node: ServerNode) {

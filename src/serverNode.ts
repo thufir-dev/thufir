@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { PrometheusConfig } from './types';
+import { PrometheusConfig, SSHConfig } from './types';
 
 export interface LogConfig {
     paths: string[];
@@ -11,6 +11,7 @@ export class ServerNode extends vscode.TreeItem {
     private _prometheusConfig?: PrometheusConfig;
     private _logConfig?: LogConfig;
     private _isLocalOnly: boolean = false;
+    private _sshConfig?: SSHConfig;
 
     constructor(
         public readonly label: string,
@@ -19,7 +20,8 @@ export class ServerNode extends vscode.TreeItem {
         public readonly port: number = 22,
         isLocalOnly: boolean = false,
         prometheusConfig?: PrometheusConfig,
-        logConfig?: LogConfig
+        logConfig?: LogConfig,
+        sshConfig?: SSHConfig
     ) {
         super(
             label,
@@ -28,6 +30,7 @@ export class ServerNode extends vscode.TreeItem {
         this._prometheusConfig = prometheusConfig;
         this._logConfig = logConfig;
         this._isLocalOnly = isLocalOnly;
+        this._sshConfig = sshConfig;
         if (isLocalOnly) {
             this._isConnected = true; // Local connections are always considered connected
         }
@@ -65,6 +68,14 @@ export class ServerNode extends vscode.TreeItem {
 
     get isLocalOnly(): boolean {
         return this._isLocalOnly;
+    }
+
+    get sshConfig(): SSHConfig | undefined {
+        return this._sshConfig;
+    }
+
+    set sshConfig(config: SSHConfig | undefined) {
+        this._sshConfig = config;
     }
 
     private updateProperties() {
